@@ -16,6 +16,7 @@
  */
 'use strict';
 const path = require('path');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 
 function judge(input) {
   const tp = input && input.transcript_path;
@@ -42,7 +43,7 @@ if (require.main === module) {
     let out = null;
     try { out = judge(JSON.parse(raw)); } catch (e) { out = null; }
     if (out) process.stdout.write(JSON.stringify(out));
-    process.exit(0);
+    hookExit(0);
   });
 }
 

@@ -62,6 +62,7 @@
  * the built-ins FIRST.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
@@ -75,7 +76,7 @@ let data = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { data += c; });
 
-function allow() { process.exit(0); }
+function allow() { hookExit(0); }
 
 const RECORD_ONLY = process.argv.includes('--record');
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -262,5 +263,5 @@ process.stdin.on('end', () => {
     + 'Bounded already, or the condition still holds? Re-issue unchanged.';
 
   console.log(JSON.stringify(declare({ decision: 'block', reason }, input)));
-  process.exit(0);
+  hookExit(0);
 });

@@ -19,6 +19,21 @@ Example: a check that any Windows machine can run goes to `audience: os:windows`
 the one Windows machine the writer happens to remember (measured 2026-10-11: such a request
 went to a machine that was switched off while another party's Windows machines were on).
 
+### Leaving parties out: `except`
+
+A broad address (`os:<os>`, `person:<p>`, everyone) can leave devices out on purpose — every instance and every person
+can be included by name or excluded:
+
+- **per entry:** `shared-memory-post.py … --except <tokens>` (a device id, `person:<p>`, `os:<o>`);
+- **per person:** `except_topics: ["<area>", …]` in that person's `parties.json` entry — requests of those areas sent
+  to `os:<os>` or everyone leave that person's devices out (for a party that does not take core or AI topics).
+
+Naming a device or the person by itself still reaches them. The post tool resolves the category and writes the devices
+it reaches into `audience` and `next`, with the left-out ones under `except:` — so a reader on an older core, which knows
+no `except:`, is not addressed either. A hand-written entry may keep the category and add `except:`; the inbox honours
+it. Narrowing is no reason for one machine: an entry left with ONE Windows device for a Windows check needs
+`one-machine: <why>` like a direct address - the post tool refuses it without `--one-machine`, the lint names it.
+
 ## Who is asked first: priority (a hint, never a sequence)
 
 Any request that several parties can take — a Windows check, a review, a test run — may say

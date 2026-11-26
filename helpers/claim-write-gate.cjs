@@ -20,6 +20,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { sessions } = require('./session-areas.cjs');
 
@@ -42,7 +43,7 @@ process.stdin.on('end', () => {
     const input = JSON.parse(raw);
     const ti = input.tool_input || {};
     const file = ti.file_path || ti.notebook_path;
-    if (!file) process.exit(0);
+    if (!file) hookExit(0);
     const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
     const me = input.session_id || process.env.CLAUDE_CODE_SESSION_ID || '';
     const f = norm(file);
@@ -60,9 +61,9 @@ process.stdin.on('end', () => {
           + 'One topic, one owner: do not write there. Send the need to the owner (SendMessage: what, why, deadline) — '
           + 'or the owner releases (`session-areas.cjs release <path>`) / the operator reassigns the area.';
         process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
-        process.exit(0);
+        hookExit(0);
       }
     }
   } catch (e) { /* fail open */ }
-  process.exit(0);
+  hookExit(0);
 });

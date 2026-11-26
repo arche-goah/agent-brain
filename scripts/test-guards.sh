@@ -385,6 +385,10 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: ci-lint-local in the foreground" Bash command "bash scripts/ci-lint-local.sh lint" block
   tr_probe "mechanism-guard/core rule: ci-lint-local via Monitor" Monitor command "bash scripts/ci-lint-local.sh lint" allow
   tr_probe "mechanism-guard/core rule: the ci-lint-local fixture itself" Bash command "bash scripts/test-ci-lint-local.sh" allow
+  tr_probe "mechanism-guard/core rule: core-push-lint in the foreground" Bash command "bash core/scripts/core-push-lint.sh --fast /tmp/wt" block
+  tr_probe "mechanism-guard/core rule: core-merge-lint in the foreground, env prefix" Bash command "CORE_MERGE_LINT_CLONE=/tmp/c bash scripts/core-merge-lint.sh 217" block
+  tr_probe "mechanism-guard/core rule: grep in core-push-lint.sh (control)" Bash command "grep -n fast scripts/core-push-lint.sh" allow
+  tr_probe "mechanism-guard/core rule: the queue fixture of core-push-lint (control)" Bash command "bash scripts/test-core-push-lint-queue.sh" allow
   # 2026-10-26: multi-line text belongs in a file - a commit message tripped a push ask rule
   tr_probe "mechanism-guard/core rule: multi-line commit -m" Bash command 'git -C /r commit -m \"fix: x\n\nbody names git -C <r> push to main\"' block
   tr_probe "mechanism-guard/core rule: one-line commit -m" Bash command 'git -C /r commit -m \"fix: one line\"' allow
@@ -429,6 +433,16 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: fast push lint" Monitor command "bash core/scripts/core-push-lint.sh --fast /x/wt" allow
   tr_probe "mechanism-guard/core rule: full push lint at a train head with the marker" Monitor command "bash core/scripts/core-push-lint.sh /x/wt # MECHANISM-OK: train head train/2026-11-17-a" allow
   tr_probe "mechanism-guard/core rule: grep in the push lint" Bash command "grep -n FAST core/scripts/core-push-lint.sh" allow
+  # 2026-11-23, ported from the Windows instance: submodule update --remote moves core/ off the pin
+  tr_probe "mechanism-guard/core rule: submodule update --remote" Bash command "git submodule update --remote core" block
+  tr_probe "mechanism-guard/core rule: submodule update --remote=main after a separator" Bash command "cd /r && git -C /r submodule update --init --remote=main" block
+  tr_probe "mechanism-guard/core rule: submodule update --init" Bash command "git submodule update --init core" allow
+  tr_probe "mechanism-guard/core rule: the phrase inside a commit message" Bash command "git -C /r commit -m \"docs: never git submodule update --remote\"" allow
+  # review of the macOS instance on #627: git's global options before submodule, and a shell comment after the command
+  tr_probe "mechanism-guard/core rule: submodule --remote after -c" Bash command "git -c protocol.file.allow=always submodule update --remote core" block
+  tr_probe "mechanism-guard/core rule: submodule --remote after --git-dir" Bash command "git --git-dir=.git submodule update --remote core" block
+  tr_probe "mechanism-guard/core rule: submodule --remote after a quoted -C path" Bash command "git -C \"/a b\" submodule update --remote core" block
+  tr_probe "mechanism-guard/core rule: --remote only in a shell comment" Bash command "git submodule update --init core # never --remote" allow
   # class sweep of the same day: waiting scripts by name
   tr_probe "mechanism-guard/core rule: wait-mcp-reconnect in the foreground" Bash command "bash core/scripts/wait-mcp-reconnect.sh touchdesigner" block
   tr_probe "mechanism-guard/core rule: shared-memory-watch in the foreground" Bash command "bash core/scripts/shared-memory-watch.sh watch 300" block
@@ -497,6 +511,10 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: pin read by cat (control)" Bash command "cat m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by sed -n (control)" Bash command "sed -n 1,40p m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by awk (control)" Bash command "awk '/name/' m/.claude-plugin/marketplace.json" allow
+  # Windows review of #533 (2026-11-17): GNU awk edits in place - awk is a reader only without `-i inplace`
+  tr_probe "mechanism-guard/core rule: pin edit by awk -i inplace" Bash command "awk -i inplace '{print}' m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by awk --include=inplace" Bash command "awk --include=inplace '{print}' m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin read by awk -F (control)" Bash command "awk -F: '{print \$1}' m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by diff (control)" Bash command "diff m/.claude-plugin/marketplace.json /tmp/x" allow
   tr_probe "mechanism-guard/core rule: pin read by jq (control)" Bash command "jq .plugins m/.claude-plugin/marketplace.json" allow
   # 2026-11-02: a GET of the remote file through gh api is a read; the same endpoint with a method or field is a write
@@ -545,6 +563,71 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: write a style file" Write file_path ".claude/output-styles/mine.md" block
   tr_probe "mechanism-guard/core rule: read the style dir (control)" Bash command "cat .claude/output-styles/caveman.md" allow
   tr_probe "mechanism-guard/core rule: core's own style file (control)" Write file_path "output-styles/caveman.md" allow
+  tr_probe "mechanism-guard/core rule: copy a style OUT of the style dir (control)" Bash command "cp .claude/output-styles/caveman.md /tmp/style-backup.md" allow
+  tr_probe "mechanism-guard/core rule: list the style dir (control)" Bash command "ls -l .claude/output-styles/" allow
+  tr_probe "mechanism-guard/core rule: sed -i on a style file" Bash command "sed -i 's/a/b/' .claude/output-styles/mine.md" block
+  # Class sweep, read forms of the path rules (finding class: a rule that names a file and exempts only a
+  # hand-kept list of read commands holds every reader it forgot - the foreground-wait rules held
+  # `sed -n`/`grep` on a watch script, the pin rule held `gh api` GET and an inline `python -c` read).
+  # A path rule holds write and execute forms only; each read below must pass, each write/execute must block.
+  tr_probe "mechanism-guard/core rule: read a watch script by inline python" Bash command "python3 -c \"print(open('core/scripts/collab-watch.sh').read())\"" allow
+  tr_probe "mechanism-guard/core rule: read a watch script by inline node" Bash command "node -e \"console.log(require('fs').readFileSync('core/scripts/shared-memory-watch.sh','utf8'))\"" allow
+  tr_probe "mechanism-guard/core rule: parse a wait script by inline python" Bash command "python -c \"import ast;ast.parse(open('core/scripts/wait-mcp-reconnect.sh').read())\"" allow
+  tr_probe "mechanism-guard/core rule: read ci-watch.sh in a subshell" Bash command "(cat core/scripts/ci-watch.sh)" allow
+  tr_probe "mechanism-guard/core rule: wc, git log and git diff on ci-watch.sh" Bash command "wc -l core/scripts/ci-watch.sh; git log -- core/scripts/ci-watch.sh; git diff -- core/scripts/ci-watch.sh" allow
+  tr_probe "mechanism-guard/core rule: read ci-lint-local.sh by inline python" Bash command "python3 -c \"print(open('scripts/ci-lint-local.sh').read())\"" allow
+  tr_probe "mechanism-guard/core rule: head and ls on the lint script" Bash command "head -20 scripts/ci-lint-local.sh; ls scripts" allow
+  tr_probe "mechanism-guard/core rule: ci-watch run in a subshell still blocks" Bash command "(bash core/scripts/ci-watch.sh pr o/r 5)" block
+  tr_probe "mechanism-guard/core rule: wait script run in a subshell still blocks" Bash command "(core/scripts/wait-mcp-reconnect.sh td)" block
+  tr_probe "mechanism-guard/core rule: watch script run by sh still blocks" Bash command "sh core/scripts/collab-watch.sh" block
+  tr_probe "mechanism-guard/core rule: lint script run by ./ still blocks" Bash command "./scripts/ci-lint-local.sh lint" block
+  tr_probe "mechanism-guard/core rule: gate script read through a pipe (control)" Bash command "grep -n x core/scripts/handover-gate.sh | tail -3" allow
+  tr_probe "mechanism-guard/core rule: gate script read by inline python through a pipe (control)" Bash command "python3 -c \"print(open('core/scripts/leak-scan.py').read())\" | head -5" allow
+  tr_probe "mechanism-guard/core rule: gate script history through a pipe (control)" Bash command "git log --oneline -- core/scripts/ecosystem-sync.py | head -5" allow
+  tr_probe "mechanism-guard/core rule: gate script run through a pipe still blocks" Bash command "bash core/scripts/handover-gate.sh | tail -3" block
+  tr_probe "mechanism-guard/core rule: pin read by inline python (control)" Bash command "python3 -c \"import json;print(json.load(open('m/.claude-plugin/marketplace.json')))\"" allow
+  tr_probe "mechanism-guard/core rule: pin read by inline node (control)" Bash command "node -e \"console.log(JSON.parse(require('fs').readFileSync('m/.claude-plugin/marketplace.json')).plugins.length)\"" allow
+  tr_probe "mechanism-guard/core rule: pin read by wc and head (control)" Bash command "wc -c m/.claude-plugin/marketplace.json; head -c 200 m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by git log and git diff (control)" Bash command "git -C /r log -p -- m/.claude-plugin/marketplace.json; git -C /r diff -- m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by git show (control)" Bash command "git -C /r show origin/main:.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by git ls-files and git grep (control)" Bash command "git ls-files m/.claude-plugin/marketplace.json; git grep -n ref -- m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read in a subshell (control)" Bash command "(cat m/.claude-plugin/marketplace.json)" allow
+  tr_probe "mechanism-guard/core rule: pin read by a checksum (control)" Bash command "sha256sum m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin copy OUT as a backup (control)" Bash command "cp m/.claude-plugin/marketplace.json /tmp/marketplace-backup.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by PowerShell Get-Content (control)" PowerShell command "Get-Content m/.claude-plugin/marketplace.json | ConvertFrom-Json" allow
+  tr_probe "mechanism-guard/core rule: pin read by PowerShell Select-String (control)" PowerShell command "Select-String -Path m/.claude-plugin/marketplace.json -Pattern ref" allow
+  tr_probe "mechanism-guard/core rule: pin read by PowerShell Test-Path (control)" PowerShell command "Test-Path m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin edit by inline python write" Bash command "python3 -c \"open('m/.claude-plugin/marketplace.json','w').write('x')\"" block
+  tr_probe "mechanism-guard/core rule: pin edit by inline node write" Bash command "node -e \"require('fs').writeFileSync('m/.claude-plugin/marketplace.json','x')\"" block
+  tr_probe "mechanism-guard/core rule: pin edit by cp over the file" Bash command "cp -f /tmp/x m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by cp over the file, stderr redirected" Bash command "cp /tmp/x m/.claude-plugin/marketplace.json 2>&1" block
+  tr_probe "mechanism-guard/core rule: pin edit by mv" Bash command "mv /tmp/x m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin removal by rm" Bash command "rm -f m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by PowerShell Set-Content" PowerShell command "Set-Content m/.claude-plugin/marketplace.json x" block
+  tr_probe "mechanism-guard/core rule: pin edit by PowerShell pipe into Out-File" PowerShell command "Get-Content a.json | Out-File m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by gh api DELETE" Bash command "gh api -X DELETE repos/o/m/contents/.claude-plugin/marketplace.json" block
+  # The other direction (macOS review of this sweep, 2026-11-15): write modes of the listed readers and write calls
+  # an inline-script denylist misses. An inline script naming the pin passes only in the read-only allowlist form
+  # (json.load(open(<pin>)), readFileSync(<pin>)); xxd and base64 are no readers (both have a write mode).
+  tr_probe "mechanism-guard/core rule: pin written by xxd -r" Bash command "xxd -r dump.hex .claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin written by base64 -o" Bash command "base64 -d -i x.b64 -o .claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin written by inline node cpSync" Bash command "node -e \"require('fs').cpSync('x.json','.claude-plugin/marketplace.json')\"" block
+  tr_probe "mechanism-guard/core rule: pin written by inline node createWriteStream" Bash command "node -e \"require('fs').createWriteStream('.claude-plugin/marketplace.json').end('{}')\"" block
+  tr_probe "mechanism-guard/core rule: pin truncated by inline python os.open" Bash command "python3 -c \"import os; os.open('.claude-plugin/marketplace.json', os.O_WRONLY|os.O_TRUNC)\"" block
+  tr_probe "mechanism-guard/core rule: pin written by a sed w command" Bash command "sed -n 'w .claude-plugin/marketplace.json' other.json" block
+  tr_probe "mechanism-guard/core rule: pin written by git diff --output" Bash command "git diff --output=.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin written by inline python argv" Bash command "python3 -c \"import sys,shutil;shutil.copy('x',sys.argv[1])\" .claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin read and written in one inline script" Bash command "python3 -c \"import json;d=json.load(open('.claude-plugin/marketplace.json'));open('.claude-plugin/marketplace.json','W'.lower()).write('x')\"" block
+  tr_probe "mechanism-guard/core rule: pin read by inline python, single-quoted script (control)" Bash command "python3 -c 'import json;print(json.load(open(\".claude-plugin/marketplace.json\")))'" allow
+  tr_probe "mechanism-guard/core rule: style copied in by cp -t" Bash command "cp -t .claude/output-styles/ caveman.md" block
+  tr_probe "mechanism-guard/core rule: style copied in by cp -rt (bundled flags)" Bash command "cp -rt .claude/output-styles x.md" block
+  tr_probe "mechanism-guard/core rule: style copied in by cp --target-directory" Bash command "cp --target-directory=.claude/output-styles caveman.md" block
+  tr_probe "mechanism-guard/core rule: style dir copied in by cp -r, no trailing slash" Bash command "cp -r core/output-styles .claude/output-styles" block
+  tr_probe "mechanism-guard/core rule: style edited by sed with -i after the script" Bash command "sed -e 's/a/b/' -i .claude/output-styles/caveman.md" block
+  tr_probe "mechanism-guard/core rule: style edited by sed -i.bak" Bash command "sed -i.bak 's/a/b/' .claude/output-styles/caveman.md" block
+  tr_probe "mechanism-guard/core rule: style edited by sed --in-place" Bash command "sed --in-place 's/a/b/' .claude/output-styles/caveman.md" block
+  tr_probe "mechanism-guard/core rule: style read by sed --posix -n (control)" Bash command "sed --posix -n p .claude/output-styles/caveman.md" allow
+  tr_probe "mechanism-guard/core rule: style read by sed -n with a file name holding an i (control)" Bash command "sed -n 1,5p .claude/output-styles/minimal.md" allow
   # An inline script in double quotes: a backtick or $( in its text runs as a command first (measured 2026-11-03,
   # Windows instance: two backtick paths in a protocol entry ran as scripts; ported from a macOS instance rule).
   tr_probe "mechanism-guard/core rule: python -c with a backtick" Bash command 'python3 -c \"print(`date`)\"' block
@@ -563,6 +646,15 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: git -C stash push" Bash command "git -C /r stash push -m x" block
   tr_probe "mechanism-guard/core rule: git stash list (control)" Bash command "git stash list" allow
   tr_probe "mechanism-guard/core rule: git stash show (control)" Bash command "git -C /r stash show -p" allow
+  # OS-24 (2026-11-17, Windows instance): the -C path was read as one non-space token, so a quoted path
+  # with a space (the normal Windows profile) made the read exemption miss and the stash/commit rules pass
+  tr_probe "mechanism-guard/core rule: pin read by git -C show, path with a space (control)" Bash command 'git -C \"/x/A B/r\" show origin/main:.claude-plugin/marketplace.json' allow
+  tr_probe "mechanism-guard/core rule: git -C stash push, path with a space" Bash command 'git -C \"/x/A B/r\" stash push -m x' block
+  tr_probe "mechanism-guard/core rule: git -C commit with \${VAR}, path with a space" Bash command "git -C '/x/A B/r' commit -m x -- \${FILES}" block
+  # 2026-11-17, ported from the Windows instance: a parallel fetch moves FETCH_HEAD under a worktree add
+  tr_probe "mechanism-guard/core rule: worktree add at FETCH_HEAD" Bash command "git -C /r fetch -q origin pull/5/head && git -C /r worktree add -q /x/wt-5 FETCH_HEAD" block
+  tr_probe "mechanism-guard/core rule: worktree add at a full sha (control)" Bash command "git -C /r worktree add -q /x/wt-5 74c45dad5c24bf3f6f8ae8b751fb18e6ccb0febe" allow
+  tr_probe "mechanism-guard/core rule: rev-parse FETCH_HEAD (control)" Bash command "git -C /r rev-parse FETCH_HEAD" allow
   # 2026-11-11 (macOS instance): an office file built by a generic converter lost its sizes and page setup
   tr_probe "mechanism-guard/core rule: textutil builds a docx" Bash command "textutil -convert docx -output a.docx a.html" block
   tr_probe "mechanism-guard/core rule: pandoc builds a docx" Bash command "pandoc a.md -o out.docx" block
@@ -606,6 +698,13 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
     bad "mechanism-guard/core rule: ci-watch with run_in_background blocked what it should allow"
   else
     ok "mechanism-guard/core rule: ci-watch with run_in_background allows"
+  fi
+  out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/core-push-lint.sh --fast /tmp/wt","run_in_background":true}}' \
+        | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
+  if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
+    bad "mechanism-guard/core rule: core-push-lint with run_in_background blocked what it should allow"
+  else
+    ok "mechanism-guard/core rule: core-push-lint with run_in_background allows"
   fi
   # a background Bash reports once at its end: a grep without --line-buffered there is no stream
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"make test | grep FAIL","run_in_background":true}}' \

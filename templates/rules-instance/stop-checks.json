@@ -76,6 +76,14 @@
       "mode": "record"
     },
     {
+      "label": "DERIVED",
+      "marker": "DERIVED-CARRY",
+      "cmd": "core/helpers/derived-carry-gate.cjs",
+      "mode": "record",
+      "short": "A claim marked as derived comes back as a fact",
+      "_note": "Carrier of rule 0 (measured / derived / assumed apart) across replies. Shipped as a recorder; blocking is the operator's decision per brain, like the time gate."
+    },
+    {
       "label": "TIME",
       "marker": "TIME-GATE",
       "cmd": "core/helpers/time-gate.cjs",
@@ -154,6 +162,15 @@
       "mode": "block"
     },
     {
+      "label": "ROOT FILE",
+      "marker": "ROOT-FILES",
+      "cmd": "core/helpers/root-files-gate.cjs",
+      "mode": "block",
+      "extract": "stray in the repo root:\\s*(.+?)\\. Only",
+      "template": "Stray file in the repo root: {1} - move it to its folder or delete it",
+      "maxLength": 160
+    },
+    {
       "label": "EMPTY PROMISE",
       "marker": "COMMITMENT-CARRIER-GATE",
       "cmd": "core/helpers/commitment-carrier-gate.cjs",
@@ -219,6 +236,28 @@
       "maxLength": 120,
       "required": true,
       "_note": "Carrier of 'a peer's state counts once it is measured' (rules/thinking-protocol.md rule 0, freshness): the closing reply names a peer session as running or holding a claim while parallel-sessions.sh measures only this one. Words in the operator's language: .claude/rules/peer-session.json."
+    },
+    {
+      "label": "PEER TALK",
+      "marker": "PEER-TALK-GATE",
+      "cmd": "core/helpers/peer-talk-gate.cjs",
+      "mode": "block",
+      "onReissue": "run",
+      "extract": "Peers not messaged: ([^\\n]+)",
+      "template": "{1} - a peer session in this working copy heard nothing from you: SendMessage + claim",
+      "maxLength": 120,
+      "_note": "Carrier of 'two sessions, one working copy' (rules/working-rules.md #12): a live peer session in the same project root got no SendMessage from this session - holds the turn once, then a 30 min cooldown per peer. Ported from an instance alpha (2026-11-09 to 2026-11-23, 58 blocks recorded)."
+    },
+    {
+      "label": "MODE OWED",
+      "marker": "MODE-OWED",
+      "cmd": "core/helpers/mode-owed.cjs",
+      "args": ["stop"],
+      "mode": "block",
+      "onReissue": "run",
+      "template": "The mode question is owed: ask the remaining questions at once, then the mode question last",
+      "maxLength": 120,
+      "_note": "Carrier of 'the mode question comes last' (2026-11-23: an operator asked what was open in an autonomous run; three question rounds and about 40 work calls, no mode question): a turn end with the mode question owed after an answered round in a dialog the operator opened is held once per round. Its work-call half runs inside autonomous-gate.cjs."
     }
   ],
   "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",

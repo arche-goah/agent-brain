@@ -520,6 +520,21 @@ out=$(run "" "$L")
 has "[ledger|wait] 2026-10-25 other-thing" "$out" && has "waiting on the ledger exit other-side: since 2026-10-25" "$out" \
   && ok "exit other-side waits quietly" || bad "exit other-side: $out"
 has "[ledger|ai] 2026-10-25 mine-thing" "$out" && ok "exit ai-does-it stays open work" || bad "exit ai-does-it: $out"
+# A question line outranks an ai-does-it exit (macOS incident 2026-11-23: the start report said "human 0" while the
+# entry asked the operator three questions).
+printf '%s\n' '' '- [ ] Mine with a question' '  id: mine-asks' '  question: wire the new check? recommendation yes' \
+  '  exit: ai-does-it 2026-10-25 — the rest is mine' >> "$L/docs/x/open.md"
+out=$(run "" "$L")
+has "[ledger|human] 2026-10-25 mine-asks" "$out" && ok "a question line makes it the operator's despite ai-does-it" || bad "question line under ai-does-it: $out"
+# Windows review of #638/#642 (2026-11-24): the instance pattern lives in the BRAIN's ledgers.json; reading it from
+# the channel repo (--repo) left the start report at "human 0". An inline-flag pattern `(?i)` crashed the joined regex.
+printf '%s\n' '' '- [ ] Mine with an instance-form question' '  id: mine-asks-pattern' '  QUESTION FOR THE OPERATOR (1): wire it?' \
+  '  exit: ai-does-it 2026-10-25 — the rest is mine' >> "$L/docs/x/open.md"
+printf '%s\n' '{"ledgers": ["docs/x/open.md"], "operator_question_patterns": ["(?i)question for", "QUESTION FOR THE OPERATOR \\("]}' > "$L/.claude/rules/ledgers.json"
+out=$(run "" "$L")
+has "[ledger|human] 2026-10-25 mine-asks-pattern" "$out" && ok "the brain root's question pattern counts (not the channel repo's)" || bad "instance question pattern: $out"
+has "Traceback" "$out" && bad "an inline-flag pattern crashed open-items: $out" || ok "an inline-flag pattern is dropped, no crash"
+printf '%s\n' '{"ledgers": ["docs/x/open.md"]}' > "$L/.claude/rules/ledgers.json"
 # The fields as list items under the entry, the project ledgers' form (measured 2026-11-03: ten
 # such entries with `  - exit: other-side|parked` were listed as untouched agent work).
 printf '%s\n' '' '- [ ] Parked in a project ledger' '  - id: `bullet-thing`' '  - class: todo' '  - exit: parked 2026-10-25 — operator said later' '' \
@@ -636,6 +651,8 @@ printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2
   '- [ ] Ask at the stand' '  id: ask-topic' '  class: decision' '  ask-when: topic stand' '' \
   '- [ ] Ask next year' '  id: ask-later' '  exit: ai-does-it 2026-10-28' '  ask-when: 2099-01-01' '' \
   '- [ ] Ask since long' '  id: ask-due' '  class: decision' '  exit: operator-decision 2025-12-01' '  ask-when: 2026-01-01' '' \
+  '- [ ] Waved off by the operator' '  id: op-deferred' '  operator-only: deferred — the operator said all fine, only on their word' '  exit: operator-decision 2026-10-28' '' \
+  '- [ ] A real open decision' '  id: op-open' '  operator-only: taste — which look' '  exit: operator-decision 2026-10-28' '' \
   '- [ ] Ambiguous number' '  id: ambiguous' '  exit: in-pr 2026-10-28 #33' '' \
   '- [ ] Text mention only' '  id: issue-only' '  STAND: Kern-PR #31 offen, plus own work' '  exit: ai-does-it 2026-10-28' '' \
   '- [ ] Closed PR' '  id: closed-pr' '  exit: in-pr 2026-10-28 core#99' '' \
@@ -660,6 +677,10 @@ has "waiting on the open PR core#32" "$(line ' carried-own ' "$out")" && ok "own
 has "[ledger|wait]" "$(line ' ask-topic ' "$out")" && has "ask-when" "$(line ' ask-topic ' "$out")" && ok "ask-when topic waits for its trigger" || bad "ask-topic: $(line ' ask-topic ' "$out")"
 has "[ledger|wait]" "$(line ' ask-later ' "$out")" && ok "ask-when date ahead waits, even under ai-does-it" || bad "ask-later: $(line ' ask-later ' "$out")"
 has "[ledger|human]" "$(line ' ask-due ' "$out")" && ok "ask-when date reached is due" || bad "ask-due: $(line ' ask-due ' "$out")"
+# 2026-11-18 (macOS instance): "all fine, leave it" recorded as operator-decision + operator-only: deferred printed as
+# "needs you" in 30 session starts. The deferral waits for the operator's word; a real open decision stays the operator's.
+has "[ledger|wait]" "$(line ' op-deferred ' "$out")" && ok "operator-only: deferred waits for the operator's word" || bad "op-deferred: $(line ' op-deferred ' "$out")"
+has "[ledger|human]" "$(line ' op-open ' "$out")" && ok "an operator decision with another reason stays the operator's (control)" || bad "op-open: $(line ' op-open ' "$out")"
 has "[ledger|ai]" "$(line ' ambiguous ' "$out")" && ok "bare #N with two open PRs stays ours" || bad "ambiguous: $(line ' ambiguous ' "$out")"
 has "[ledger|ai]" "$(line ' issue-only ' "$out")" && ok "a PR named in the text alone does not carry the entry" || bad "text mention: $(line ' issue-only ' "$out")"
 has "names no open PR any more" "$(line ' closed-pr ' "$out")" && ok "a PR no longer open hands the entry back, saying so" || bad "closed: $(line ' closed-pr ' "$out")"

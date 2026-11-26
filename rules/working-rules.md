@@ -95,7 +95,8 @@ History: core/docs/rule-history.md, "Working Rules".
 
 **Naming:** kebab-case, lowercase, English, no umlauts/spaces. **Root files:** only
 README.md, CLAUDE.md, LICENSE, .gitignore, .gitattributes, .gitmodules, .mcp.json, .env,
-.env.example (an instance may extend the whitelist, never silently). YOU MUST NEVER place
+.env.example (an instance may extend the whitelist, never silently: `.claude/rules/root-files.json`;
+carrier `core/helpers/root-files-gate.cjs`, turn end). YOU MUST NEVER place
 other files in root, create duplicate docs (check first) or use code fragments as file
 names (flex, mb-6, BigInt(0), void); delete junk files when discovered.
 
@@ -184,6 +185,12 @@ decisions 2026-10-22 and 2026-10-27, both modes): it is reversible, on own terra
 no barrier, and the refusal's NAMED ground (guard id, classifier label, hook name) demonstrably
 does not apply to it; an unreadable ground counts as a refusal of the EFFECT, so no second path.
 Carried by the core's `mechanism-rules.json`.
+**A gate that errs is a finding** (2026-11-23): a refusal decides the step, never whether the
+gate was right - a refusal passed by a marker is classified in the same turn, with its backing
+(intended · gate false positive · own mistake; `core/helpers/root-cause-gate.cjs`), and a false
+positive gets its cause and fix like any mishap. The session start names a gate mostly passed by
+its override marker or in another form (`core/scripts/gate-health.py`, data `gate-markers.json`);
+full text `core/docs/gate-errs.md`.
 
 **THE REQUIRED OUTCOME is binary:** find the defined path and take it — or "there is no
 defined path" → it gets DISCUSSED, raised BY THE AGENT BEFORE acting, through the fitting
@@ -240,8 +247,9 @@ PR, never as a local copy. Allowed deviations are DECLARED with the reason in
 `evidence` token or its `reach` analysis — "not yet ported" is no reason) · **external**
 (third-party, used as is; names its `source`) · **alpha** (with an expiry date; past it:
 merge, extend with a reason, or unwire). **An alpha names its kind** (operator decision
-2026-11-17): `test` — a real test phase, names what is measured, the core port waits for
-its result; `unreleased` — a clear core feature wired here at once so nobody waits for a
+2026-11-17): `test` — a real test phase, names what is measured and the `record` it is written
+to (2026-11-23: a record that is missing or silent for a week is a finding — the test
+measures nothing), the core port waits for its result; `unreleased` — a clear core feature wired here at once so nobody waits for a
 release: its core PR is opened at once, in the same strand (`core_pr`), the local copy
 goes with the pin, and the date is an emergency brake, never a waiting period.
 **A suite that ships as a plugin is consumed as the plugin** (2026-10-11); a clone only to
@@ -304,7 +312,7 @@ History: core/docs/rule-history.md, "A Needed Reload Is Not a Wait State (operat
 10. **What the operator just criticised is not re-released unseen** (2026-08-19).
 
 **Carriers** (operator decision 2026-11-03, HARD needs a mechanical check): #3
-`core/helpers/autonomous-idle-gate.cjs` (an idle end of an autonomous run needs one of the gate's
+`core/helpers/autonomous-idle-gate.cjs` (an idle end with own work open - in either run mode since 2026-11-18 - needs one of the gate's
 end lines `BLOCKED:`, `POOL EMPTY:` or `LIST EMPTY:`, measured; the gate is their one source), #7 in its conditional part only — `core/helpers/conditional-order-gate.cjs` (a
 condition word holds the first expensive call). The rest of #7 ("own notes are not orders",
 "settle WHICH machine first") and the other items carry none and rank with the instance's rule
@@ -339,8 +347,10 @@ History: core/docs/rule-history.md, "Order Fidelity (Auftragstreue) (HARD)".
 7. **Every finding on every level is reported, in the same turn, never only on request**
    (2026-10-16): device or app, suite tool, suite skill, core hook/gate/rule, the harness,
    the AI's own behaviour (a skipped part, a wrong assumption, a needless question). One
-   shared-memory entry under the level's topic: what happened (verbatim, error text), what
-   is measured, which level, what it blocks, a proposal. Silence is measured, not trusted:
+   shared-memory entry (a device-private one in an own-devices channel; a private project's in
+   the ledger, its core part unnamed in the shared memory, 2026-11-15): what happened (verbatim,
+   error text), what is measured, which level, what it blocks, a proposal. Offline: ledger now,
+   post at the next start, `open end:` at the close. Silence is measured, not trusted:
    the device report carries the date of the device's last shared-memory entry, and
    `core/scripts/device-status.py --brief` names a device that ran a session but posted
    nothing for a week.

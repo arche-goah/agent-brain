@@ -22,13 +22,14 @@
  * Exit 0 = allow, 2 = block. Fails open on unreadable input or transcript.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { invocations, publishedText } = require('./published-text.cjs');
 const { isTranscriptRecord } = require('./turn-kind.cjs');
 
 const CLAIM = /\b(?:read|reviewed)\s+(?:the|its|this PR'?s?)\s+diffs?\b|\breviewed\s+the\s+code\b/i;
 const POST_RX = /(^|[;&|(]\s*|\s)gh\s+(pr\s+(create|comment|review)|issue\s+(create|comment))\b/;
-const READ_RX = /(^|[;&|(]\s*|\s)(gh\s+pr\s+diff\b|git\b(?:\s+-C\s+\S+)?\s+(?:diff|show)\b)/;
+const READ_RX = /(^|[;&|(]\s*|\s)(gh\s+pr\s+diff\b|git\b(?:\s+-C\s+(?:"[^"]*"|'[^']*'|\S+))?\s+(?:diff|show)\b)/;
 const ESCAPE = /#\s*DIFF-READ:\s*\S/;
 
 function isPost(cmd, ps) {
@@ -156,7 +157,7 @@ if (require.main === module) {
   process.stdin.on('end', () => {
     let rc = 0;
     try { rc = gate(JSON.parse(data)); } catch (e) { rc = 0; }
-    process.exit(rc);
+    hookExit(rc);
   });
   process.stdin.resume();
 }

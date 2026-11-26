@@ -257,8 +257,45 @@ expect "a name in a file the script hands over blocks"      block "$T" "sh $NT/s
 expect "a script run directly (./path) is read too"         block "$SC" "./direct.sh 5"
 expect "a script after a ; and VAR= prefix is read too"     block "$T" "echo go; X=1 bash -e $NT/scripts/named.sh 5"
 expect "a script path that does not exist passes"           allow "$T" "bash $NT/scripts/no-such.sh"
+# The core's own guard fixture only (operator 2026-11-18, "Ja, eng begrenzt"): scripts/test-guards.sh with
+# helpers/public-text-guard.cjs beside it. The same body under another name, or without the guard beside it, is read.
+FX="$T/fxcore"; mkdir -p "$FX/scripts" "$FX/helpers" "$T/fxother/scripts"
+cp "$SC/named.sh" "$FX/scripts/test-guards.sh"; : > "$FX/helpers/public-text-guard.cjs"
+cp "$SC/named.sh" "$FX/scripts/test-other.sh"; cp "$SC/named.sh" "$T/fxother/scripts/test-guards.sh"
+# ...and only in a checkout of the core repo (review 2026-11-18: any file of that name passed): a tree whose origin is
+# another repo is read (control), the core's own origin passes.
+cp -R "$FX" "$T/fxfake"; git init -q "$T/fxfake"; git -C "$T/fxfake" remote add origin https://github.com/o/pub.git
+expect "the same layout in another repo is read (control)"   block "$T" "bash $(native "$T")/fxfake/scripts/test-guards.sh 5"
+git init -q "$FX"; git -C "$FX" remote add origin https://github.com/arche-goah/agent-brain.git
+expect "the core's own guard fixture is not read as posts"  allow "$T" "bash $(native "$FX")/scripts/test-guards.sh"
+cp "$SC/named.sh" "$FX/scripts/test-public-text-guard.sh"
+expect "the guard's second fixture is not read as posts"    allow "$T" "bash $(native "$FX")/scripts/test-public-text-guard.sh"
+expect "another script beside the guard is read (control)"  block "$T" "bash $(native "$FX")/scripts/test-other.sh 5"
+expect "test-guards.sh without the guard beside it is read (control)" block "$T" "bash $(native "$T")/fxother/scripts/test-guards.sh 5"
+# 2026-11-18 (7 of 14 core fixtures refused on a hand run): one `$(` anywhere made every quoted probe argument a command.
+# Now only what the shell runs is read: `$( )` and backtick bodies (not inside single quotes, not escaped), and the
+# quoted text of a segment whose own command is `sh -c` / `eval`.
+if [ -f "$ROOT/scripts/test-review-claim-gate.sh" ]; then
+  expect "a core fixture whose gh commands are probe arguments is no post (red on the previous guard)" allow "$T" "bash $(native "$ROOT")/scripts/test-review-claim-gate.sh"
+fi
+cp "$SC/named.sh" "$SC/probes-post.sh"; printf '%s\n' 'n="$(date)"' 'probe "x" "gh api -X POST repos/o/r/issues -f body=y"' >> "$SC/probes-post.sh"
+expect "a real post beside probe arguments still blocks (control)" block "$T" "bash $NT/scripts/probes-post.sh 5"
+# A named post the shell RUNS is read with its text (review of #615, the Windows instance: all of these passed before)
+expect "a named post through bash -c blocks"                 block "$T" "bash -c 'gh pr comment 1 -R o/pub --body \"thanks zorbalina\"'"
+expect "a named post through bash -lc blocks"                block "$T" "bash -lc 'gh pr comment 1 -R o/pub --body \"thanks zorbalina\"'"
+expect "a named post through sh -ec blocks"                  block "$T" "sh -ec 'gh pr comment 1 -R o/pub --body \"thanks zorbalina\"'"
+expect "a named post inside \$( ) in double quotes blocks"    block "$T" 'echo "$(gh pr comment 1 -R o/pub --body "thanks zorbalina")"'
+expect "a clean post through bash -c passes (control)"       allow "$T" "bash -c 'gh pr comment 1 -R o/pub --body \"thanks\"'"
 expect "a script path the guard cannot expand blocks (unknown target)" block "$T" 'bash "$NOSUCHDIR/named.sh" 5'
 expect "the same unreadable script from a private clone passes" allow "$T/privclone" 'bash "$NOSUCHDIR/named.sh" 5'
+# PowerShell scripts the same way (debt named in #515): pwsh/powershell with a .ps1, `& x.ps1`, a .ps1 run by path
+printf '%s\n' '# posts the fix note' 'gh pr comment 5 -R o/pub --body "fixed, thanks zorbalina"' > "$SC/named.ps1"
+printf '%s\n' '# the reviewer'"'"'s note' 'gh pr comment 5 -R o/pub --body "fixed in abc123"' > "$SC/clean.ps1"
+expect "pwsh -File <x.ps1> posting a name blocks"           block "$T" "pwsh -NoProfile -ExecutionPolicy Bypass -File $NT/scripts/named.ps1"
+expect "powershell <x.ps1> posting a name blocks"           block "$T" "powershell.exe $NT/scripts/named.ps1"
+expect "a .ps1 run by its path blocks"                      block "$T" "$NT/scripts/named.ps1"
+expect "the same .ps1 without the name passes"              allow "$T" "pwsh -File $NT/scripts/clean.ps1"
+expect "pwsh -Command with inline text names no file"       allow "$T" "pwsh -Command Get-Date $NT/scripts/named.ps1"
 
 [ "$fail" -eq 0 ] && echo "public-text-guard: all checks passed" || echo "public-text-guard: FAILURE"
 exit "$fail"

@@ -26,11 +26,23 @@ case "$OS" in macOS|Windows|Linux) ;; *) usage ;; esac
 [ -f "$DETAILS" ] && [ -s "$DETAILS" ] || { echo "post-os-ok: details file '$DETAILS' missing or empty - say what was run" >&2; exit 2; }
 key="$("$PY" "$HERE/instance_key.py" 2>/dev/null | grep -aE '^<!-- instance-key: [0-9a-f]+ -->$' | head -1)"
 [ -n "$key" ] || { echo "post-os-ok: no instance key (SHARED_MEMORY_SELF unset?) - nothing posted" >&2; exit 2; }
-head="${POST_OS_OK_HEAD:-}"
-if [ -z "$head" ]; then
+live_head() {
+  local branch ref
   branch="$(gh pr view "$PR" -R "$REPO" --json headRefName,isCrossRepository -q 'select(.isCrossRepository|not) | .headRefName' 2>/dev/null)"
   ref="${branch:+refs/heads/$branch}"; ref="${ref:-refs/pull/$PR/head}"
-  head="$(git ls-remote "https://github.com/$REPO" "$ref" | cut -c1-40)"
+  git ls-remote "https://github.com/$REPO" "$ref" | cut -c1-40
+}
+head="${POST_OS_OK_HEAD:-}"
+if [ -z "$head" ]; then
+  head="$(live_head)"
+elif [ "${POST_OS_OK_DRY:-}" != 1 ]; then
+  # A given head is checked against the PR's own (2026-11-17, macOS instance: an OK on #576 named 7b760f1, the
+  # checkout's HEAD after a refused train build, not the PR head 421aef9). POST_OS_OK_LIVE_HEAD is the fixture's seam.
+  live="${POST_OS_OK_LIVE_HEAD:-$(live_head)}"
+  case "$live" in
+    "$head"*) ;;
+    *) echo "post-os-ok: POST_OS_OK_HEAD $head is not the head of $REPO#$PR (${live:-unreadable}) - check that checkout, or leave POST_OS_OK_HEAD unset" >&2; exit 2 ;;
+  esac
 fi
 [[ "$head" =~ ^[0-9a-f]{7,40}$ ]] || { echo "post-os-ok: no head for $REPO#$PR" >&2; exit 2; }
 f="${DETAILS%.*}.os-ok.md"

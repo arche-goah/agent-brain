@@ -43,7 +43,12 @@ run_check() {   # run_check <label> <command...>
 lint_mode=0
 if [ -f "$root/scripts/ci-lint-local.sh" ] && [ -f "$root/.github/workflows/ci.yml" ]; then
   lint_mode=1
-  lint=(bash "$root/scripts/ci-lint-local.sh" --commit --skip "leak scan (tree)" --skip "content guard")
+  # Without git's hook variables (Windows instance, 2026-11-18): a hook runs with GIT_DIR / GIT_INDEX_FILE /
+  # GIT_WORK_TREE set, and they win over `git -C <dir>` - the fixtures' git calls (init, commit, reset, config) landed in
+  # the committing repository: three foreign commits on the branch, MERGE_HEAD lost, `core.bare = true` in its config.
+  lint=(env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE -u GIT_PREFIX -u GIT_OBJECT_DIRECTORY \
+    -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR \
+    bash "$root/scripts/ci-lint-local.sh" --commit --skip "leak scan (tree)" --skip "content guard")
   if [ -f "$brain/.claude/rules/leak-names.json" ] && [ "$root" != "$brain" ]; then
     LEAK_NAMES_JSON="$(cat "$brain/.claude/rules/leak-names.json")" run_check "ci lint (--commit)" "${lint[@]}"
   else
@@ -71,8 +76,22 @@ if [ -f "$root/dependencies.json" ] && [ -f "$core/scripts/suite-check.py" ]; th
 fi
 
 # 3. A repo's own hardcode lint (show network parameters never hardcoded) — where it ships one.
+#    No copy of its own (operator decision 2026-11-19 on the macOS instance: a brain kept a hand copy only because this
+#    step read nothing else): the lint an installed plugin ships as tools/hardcode-lint.py, newest first, over the code
+#    directories the repo has, against the one network config $SHOW_NETWORK_CONFIG names. Only where that variable
+#    points at a file: a repo without a show network has nothing to check against.
 if [ -f "$root/scripts/hardcode-lint.py" ]; then
   run_check "hardcode-lint" "$py" "$root/scripts/hardcode-lint.py"
+elif [ -n "${SHOW_NETWORK_CONFIG:-}" ] && [ -f "$SHOW_NETWORK_CONFIG" ]; then
+  hl=""
+  for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/*/*/tools/hardcode-lint.py; do
+    [ -f "$f" ] && { [ -z "$hl" ] || [ "$f" -nt "$hl" ]; } && hl=$f
+  done
+  hl_dirs=()
+  for d in src scripts .claude/skills; do [ -d "$root/$d" ] && hl_dirs+=("$root/$d"); done
+  if [ -n "$hl" ] && [ "${#hl_dirs[@]}" -gt 0 ]; then
+    run_check "hardcode-lint (plugin)" "$py" "$hl" "${hl_dirs[@]}" --config "$SHOW_NETWORK_CONFIG"
+  fi
 fi
 
 # 4. shared-memory: entry rules bite when writing, not at the weekly scan (`--staged` judges only
@@ -96,6 +115,15 @@ fi
 #     registered ledgers this commit stages, by their staged content; ~0.1 s.
 if [ -f "$root/.claude/rules/ledgers.json" ] && [ -f "$core/scripts/ledger-one-exit.py" ]; then
   run_check "ledger-one-exit" "$py" "$core/scripts/ledger-one-exit.py" --root "$root" --staged
+fi
+
+# 4e. A phrase a reader greps from a file is not removed silently (operator, 2026-11-23, question tool round on the
+#     macOS instance): a ledger `check: grep -q "<phrase>" <file>` and a memory `home: <file> :: <phrase>` broke only at
+#     the next start check after a diet cut their sentences; a replay over that brain's history found ten earlier commits
+#     on seven days. Readers come from the staged tree, so rewriting the reader in the same commit passes. In every repo
+#     (the readers live in brains); ~0.1 s.
+if [ -f "$core/scripts/reader-break-check.py" ]; then
+  run_check "reader-break-check" "$py" "$core/scripts/reader-break-check.py" --root "$root"
 fi
 
 # 4c. A new dated rule: which OLD places say something about the same thing? (rule-conflict protocol step 2,
@@ -237,6 +265,12 @@ covers_check() {
   [ -n "$staged" ] || return 0
   stems=" "
   while IFS= read -r f; do s=${f##*/}; stems="$stems${s%.*} "; done <<< "$staged"
+  # A fixture runs without the commit's git environment: under `git commit -- <paths>` git hands the hook
+  # GIT_INDEX_FILE (a temporary index), and a fixture that runs git in its own temp repo then wrote into the
+  # outer commit's index — the next step's `git diff --cached` died with 128 (measured 2026-11-23, macOS).
+  # Also without the commit's `-c` settings: GIT_CONFIG_PARAMETERS carries `git -c core.hooksPath=…` into every child and
+  # overrides a fixture repo's own config, so its commits ran this hook again (measured 2026-11-23).
+  local noenv=(env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE -u GIT_PREFIX -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT)
   # JS fixtures (test-*.cjs / test-*.js) take part the same way with `//` comments (reach finding at #453, 2026-11-07:
   # the gate fixtures are .cjs and stayed out of reach).
   for f in "$root"/scripts/test-*.sh "$root"/scripts/*-test.py "$root"/scripts/test-*.cjs "$root"/scripts/test-*.js; do
@@ -246,10 +280,13 @@ covers_check() {
     tokens=$(sed -nE 's,^(#|//) covers:[[:space:]]*,,p' "$f" | head -1 | sed 's/(.*//')
     for t in $tokens; do case "$stems" in *" $t "*) run=1 ;; esac; done
     [ "$run" -eq 1 ] || continue
+    # A fixture runs without the commit's git environment (measured 2026-11-19, macOS instance): in `git commit -- <paths>`
+    # git hands the hook GIT_INDEX_FILE (a temporary index); a fixture inherited it, its own `git add/commit` in a sandbox
+    # repo wrote into the commit's index, and the content guard after it died on `git diff --cached` (exit 128).
     case "$f" in
-      *.cjs|*.js) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && node "$2"' _ "$root" "$f" ;;
-      *.py) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && "$2" "$3"' _ "$root" "$py" "$f" ;;
-      *)    run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && bash "$2"' _ "$root" "$f" ;;
+      *.cjs|*.js) run_check "fixture ${f#"$root"/}" "${noenv[@]}" bash -c 'cd "$1" && node "$2"' _ "$root" "$f" ;;
+      *.py) run_check "fixture ${f#"$root"/}" "${noenv[@]}" bash -c 'cd "$1" && "$2" "$3"' _ "$root" "$py" "$f" ;;
+      *)    run_check "fixture ${f#"$root"/}" "${noenv[@]}" bash -c 'cd "$1" && bash "$2"' _ "$root" "$f" ;;
     esac
   done
 }

@@ -61,7 +61,7 @@ DEV="$(nat "$T/dev")"
 D_HOOK="$(H "$(C "node $DEV/helpers/d.cjs")")"
 out=$(mk "$D_HOOK" '' '')
 grep -q '^!! local machinery: 1 item(s) run from outside' <<< "$out" && ok "undeclared-outside-loud" || bad "undeclared-outside-loud: $out"
-out=$(mk "$D_HOOK" '' "{\"alpha\":{\"$DEV/\":{\"kind\":\"test\",\"until\":\"2026-10-20\",\"why\":\"alpha\"}}}")
+out=$(mk "$D_HOOK" '' "{\"alpha\":{\"$DEV/\":{\"kind\":\"test\",\"record\":\"o/r#1\",\"until\":\"2026-10-20\",\"why\":\"alpha\"}}}")
 [[ -z "$out" ]] && ok "alpha-in-date-silent" || bad "alpha-in-date-silent: $out"
 out=$(mk "$D_HOOK" '' "{\"alpha\":{\"$DEV/\":{\"until\":\"2026-10-01\",\"why\":\"alpha\"}}}")
 grep -q 'past their date' <<< "$out" && ok "alpha-expired-loud" || bad "alpha-expired-loud: $out"
@@ -145,9 +145,29 @@ out=$(run); grep -q 'without a declaration (script 1).*: scripts/rig-check.sh' <
   && ok "undeclared-script-listed-fixture-skipped" || bad "undeclared-script-listed-fixture-skipped: $out"
 decl '{"instance":{"scripts/rig-":{"reviewed":"2026-10-01","why":"probes this venue only","evidence":"rig-switch-a"}}}'
 out=$(run); [[ -z "$out" ]] && ok "declared-prefix-with-evidence-silent" || bad "declared-prefix-with-evidence-silent: $out"
-decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","until":"2026-10-20","why":"core port"}}}'
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","record":"o/r#1","until":"2026-10-20","why":"core port"}}}'
 out=$(run); [[ -z "$out" ]] && ok "alpha-script-in-date-silent" || bad "alpha-script-in-date-silent: $out"
 out=$(TODAY=2026-10-21 run); grep -q 'past their date.*scripts/rig-check.sh' <<< "$out" && ok "alpha-script-expired-loud" || bad "alpha-script-expired-loud: $out"
+# A test alpha names its record, and the record lives (2026-11-23): the kind alone used to pass, and an alpha ran
+# to its date without writing the measurement its declaration named.
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","until":"2026-10-20","why":"measures holds"}}}'
+out=$(run); grep -q '^!! local machinery: 1 test alpha(s) whose measurement has no living record: scripts/rig-check.sh (test without record)' <<< "$out" \
+  && grep -q '^local machinery summary: .*alpharecord=1' <<< "$out" \
+  && ok "test-alpha-without-record-loud" || bad "test-alpha-without-record-loud: $out"
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","until":"2026-10-20","why":"measures holds","record":".claude-state/rig.jsonl"}}}'
+out=$(run); grep -q 'no living record: scripts/rig-check.sh (record .claude-state/rig.jsonl does not exist)' <<< "$out" \
+  && ok "test-alpha-record-missing-loud" || bad "test-alpha-record-missing-loud: $out"
+mkdir -p "$T/b/.claude-state"; : > "$T/b/.claude-state/rig.jsonl"
+touch -t 202610070000 "$T/b/.claude-state/rig.jsonl"
+out=$(run); [[ -z "$out" ]] && ok "test-alpha-record-armed-and-fresh-silent" || bad "test-alpha-record-armed-and-fresh-silent: $out"
+touch -t 202609010000 "$T/b/.claude-state/rig.jsonl"
+out=$(run); grep -q 'no living record: scripts/rig-check.sh (record .claude-state/rig.jsonl not written for 37 d)' <<< "$out" \
+  && ok "test-alpha-record-silent-loud" || bad "test-alpha-record-silent-loud: $out"
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","until":"2026-10-20","why":"monthly analysis","record":".claude-state/rig.jsonl","record_days":40}}}'
+out=$(run); [[ -z "$out" ]] && ok "test-alpha-record-own-interval-silent" || bad "test-alpha-record-own-interval-silent: $out"
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","until":"2026-10-20","why":"checks a PR head","record":["https://github.com/o/r/pull/9",".claude-state/rig.jsonl"],"record_days":40}}}'
+out=$(run); [[ -z "$out" ]] && ok "test-alpha-record-list-with-url-silent" || bad "test-alpha-record-list-with-url-silent: $out"
+rm -f "$T/b/.claude-state/rig.jsonl"
 # Every alpha names its kind (operator 2026-11-17): test waits for its result, unreleased carries its core PR.
 decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"o/r#123"}}}'
 out=$(run); [[ -z "$out" ]] && ok "alpha-unreleased-with-core-pr-silent" || bad "alpha-unreleased-with-core-pr-silent: $out"
@@ -305,7 +325,7 @@ printf '{"mcpServers":{"s":{"command":"node","args":["%s"]}}}' "$(nat "$T/suite/
 out=$(run); [[ -z "$out" ]] && ok "mcp-source-on-main-silent" || bad "mcp-source-on-main-silent: $out"
 git -C "$T/suite" checkout -q -b feat/x
 out=$(run); grep -q 'suite@feat/x' <<< "$out" && ok "mcp-source-off-main-loud" || bad "mcp-source-off-main-loud: $out"
-decl "$(printf '{"alpha":{"%s":{"kind":"test","until":"2026-10-20","why":"alpha"}}}' "$(nat "$T/suite")")"
+decl "$(printf '{"alpha":{"%s":{"kind":"test","record":"o/r#1","until":"2026-10-20","why":"alpha"}}}' "$(nat "$T/suite")")"
 out=$(run); [[ -z "$out" ]] && ok "off-main-declared-alpha-silent" || bad "off-main-declared-alpha-silent: $out"
 rm -f "$T/b/.mcp.json" "$T/b/.claude/rules/local-machinery.json"; mkdir -p "$T/b/.claude/skills"
 ln -s "$T/suite/skills/s1" "$T/b/.claude/skills/s1" 2>/dev/null
@@ -331,7 +351,7 @@ printf '{"plugins":[{"name":"suite","source":{"source":"url","url":"https://gith
   > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
 out=$(run); grep -q 'suite clone.*plugin suite@m' <<< "$out" \
   && ok "url-source-names-the-same-repo" || bad "url-source-names-the-same-repo: $out"
-decl "$(printf '{"alpha":{"%s":{"kind":"test","until":"2026-10-20","why":"checking a PR head"}}}' "$(nat "$T/suite")")"
+decl "$(printf '{"alpha":{"%s":{"kind":"test","record":"o/r#1","until":"2026-10-20","why":"checking a PR head"}}}' "$(nat "$T/suite")")"
 out=$(run); [[ -z "$out" ]] && ok "clone-declared-alpha-silent" || bad "clone-declared-alpha-silent: $out"
 out=$(TODAY=2026-10-21 run); grep -q 'past their date' <<< "$out" \
   && ok "clone-on-main-alpha-expired-loud" || bad "clone-on-main-alpha-expired-loud: $out"
@@ -472,10 +492,17 @@ out=$(run)
 grep -q 'local machinery: 5 declared deviation(s) due for review (oldest 3 shown)' <<< "$out" && ! grep -q 'c/ (instance' <<< "$out" \
   && grep -q 'review=5' <<< "$out" && ok "review-batch-of-the-oldest" || bad "review-batch-of-the-oldest: $out"
 TODAY=2026-10-08 out=$(run --review-all)
-grep -q 'local machinery review: 6 declared deviation(s), all listed' <<< "$out" && grep -q 'c/ (instance, reviewed 2026-10-01)' <<< "$out" \
+grep -q 'local machinery review: 6 declared deviation(s), all listed' <<< "$out" && grep -q 'c/ (instance, reviewed 2026-10-01, cadence 90 days)' <<< "$out" \
   && ok "review-all-lists-every-declaration" || bad "review-all-lists-every-declaration: $out"
 decl '{"instance":{"c/":{"reviewed":"2026-10-01","why":"w","evidence":"x"}}}'
 out=$(run); ! grep -q 'due for review' <<< "$out" && ok "review-fresh-silent" || bad "review-fresh-silent: $out"
+# --- per-deviation cadence (2026-11-18, drift scan agreed between the instances) --------------------
+# a hook path is capped at 30 days, its own shorter cadence counts, a docs path may go to 180; an alpha `until` far ahead is named
+decl '{"instance":{"scripts/hooks/g.cjs":{"reviewed":"2026-09-01","why":"w","evidence":"x"},"scripts/x.py":{"reviewed":"2026-09-20","review_every_days":14,"why":"w","evidence":"x"},"docs/n.md":{"reviewed":"2026-06-01","review_every_days":180,"why":"w","evidence":"x"}}}'
+out=$(run); grep -q 'scripts/hooks/g.cjs (instance, reviewed 2026-09-01, cadence 30 days)' <<< "$out" && grep -q 'scripts/x.py (instance, reviewed 2026-09-20, cadence 14 days)' <<< "$out" \
+  && ! grep -q 'docs/n.md (instance' <<< "$out" && ok "review-cadence-per-deviation" || bad "review-cadence-per-deviation: $out"
+decl '{"alpha":{"scripts/hooks/y.cjs":{"until":"2027-06-01","why":"alpha","kind":"test"}}}'
+out=$(run); grep -q 'scripts/hooks/y.cjs (alpha, until more than 90 days ahead)' <<< "$out" && ok "review-alpha-until-far-ahead" || bad "review-alpha-until-far-ahead: $out"
 rm -rf "$T/b"
 
 # --- an alpha the running core caught up with (operator 2026-10-31: unwired with the update) -------
@@ -513,6 +540,14 @@ decl '{"instance":{".claude/rules/mechanism-rules.json#merge-":{"reviewed":"2026
 out=$(run); [[ -z "$out" ]] \
   && ok "hash-key-prefix-at-word-boundary-covers" || bad "hash-key-prefix-at-word-boundary-covers: $out"
 rm -rf "$T/b"
+
+# --- review at every core update (operator rule 2026-11-18): a review older than the last core update is due ------------
+HERE="$(cd "$(dirname "$0")" && pwd)"
+out="$("$PY" -c 'import importlib.util,sys
+s=importlib.util.spec_from_file_location("lm", sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+d={"instance":{"a":{"why":"x","reviewed":"2026-11-15"},"b":{"why":"x","reviewed":"2026-11-18"}}}
+print(m.review_due(d,"2026-11-18")[0], m.review_due(d,"2026-11-18",since_core="2026-11-17")[0])' "$HERE/local-machinery.py" 2>&1)"
+[[ "$out" == "0 1" ]] && ok "review-due-after-core-update" || bad "review-due-after-core-update: $out"
 
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
 echo "test-local-machinery: all checks passed"

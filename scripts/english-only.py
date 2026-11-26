@@ -95,7 +95,11 @@ SKIP_NAMES = {"english-legacy.txt", "english-legacy-names.txt", "english-only.py
               "skill-lint.py", "test-premise-gate.sh", "test-promise-gate.sh",
               "test-open-items-gate.sh", "test-stop-checks.sh",
               "test-stoppen-gate.sh", "autonomy-diagnose.py", "test-autonomy-diagnose.sh",
-              "test-conditional-order-gate.sh", "test-time-gate.sh"}
+              "test-conditional-order-gate.sh", "test-time-gate.sh",
+              "test-session-scope.sh"}
+# test-session-scope.sh (2026-11-23) enters on the promise-gate terms: its prose is English, its German is the instance
+# pattern file it writes (helper_scope_patterns) and the operator's real helper sentences that file must match, and one
+# case runs the same German sentence WITHOUT the file and requires a hold.
 # test-conditional-order-gate.sh (2026-10-16) enters on the promise-gate terms: its German is
 # the instance pattern file it writes ("dann", "danach") and the operator sentence that file
 # must match, and its discriminator runs the same German sentence without the file and

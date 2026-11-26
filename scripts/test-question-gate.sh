@@ -315,6 +315,23 @@ askp "the mode question in a parallel call next to a decision (the 2026-10-31 in
 askp "the decision call next to a parallel mode question" "$f" t1 "Put the five write tools on ask?" deny "$R"
 f="$T/seq.jsonl"; { qcall m1 t1 "Put the five write tools on ask?"; tres; qcall m2 t2 "Continue autonomously?"; } > "$f"
 askp "the mode question as its own later call (control)" "$f" t2 "Continue autonomously?" allow "$R"
+# 2026-11-18: alone, but right after the ANSWERS of the decision call with no step between - held once, then passes
+ares() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","content":"answered"}]}}\n' "$1"; }
+bcall() { printf '{"type":"assistant","message":{"id":"%s","role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Edit","input":{}}]}}\n' "$1" "$2"; }
+f="$T/ans.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; qcall m2 t2 "Continue autonomously?"; } > "$f"
+askp "the mode question right after the answers, no step between (the 2026-11-18 incident)" "$f" t2 "Continue autonomously?" deny "$R"
+askp "the same mode question again (no step was needed)" "$f" t2 "Continue autonomously?" allow "$R"
+f="$T/ans2.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; bcall m2 e1; ares e1; qcall m3 t3 "Continue autonomously?"; } > "$f"
+askp "the mode question after the answers and a step" "$f" t3 "Continue autonomously?" allow "$R"
+# Windows review 2026-11-18, the measured sequence in a fresh root: held, then asked again after a step (passes by the
+# early return, the state stays `held`), then a NEW round of answers with no step - must be held again, was passed
+R2="$T/r-mode2"; fresh "$R2"
+f="$T/r1.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; qcall m2 t2 "Continue autonomously?"; } > "$f"
+askp "round 1: right after the answers" "$f" t2 "Continue autonomously?" deny "$R2"
+f="$T/r2.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; bcall m2 e1; ares e1; qcall m3 t3 "Continue autonomously?"; } > "$f"
+askp "round 1: after the step" "$f" t3 "Continue autonomously?" allow "$R2"
+f="$T/r3.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; bcall m2 e1; ares e1; qcall m3 t3 "Continue autonomously?"; ares t3; qcall m4 t4 "Merge PR 5?"; ares t4; qcall m5 t5 "Continue autonomously?"; } > "$f"
+askp "round 2: right after new answers is held again" "$f" t5 "Continue autonomously?" deny "$R2"
 f="$T/par2.jsonl"; { qcall m1 t1 "Put the five write tools on ask?"; qcall m1 t2 "Merge PR 5 now?"; } > "$f"
 askp "two parallel decisions without a mode question" "$f" t2 "Merge PR 5 now?" allow "$R"
 askp "a call not yet in the transcript fails open" "$f" t9 "Continue autonomously?" allow "$R"
@@ -335,11 +352,18 @@ if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
   R="$T/r-ledger"; fresh "$R"; mkdir -p "$R/.claude/rules" "$R/docs"
   printf '{"ledgers": ["docs/list.md"]}\n' > "$R/.claude/rules/ledgers.json"
   printf '%s\n' '# list' '' '- [ ] **The thing is built**' '  id: built-thing-here' '  check: test -f built.txt' '' \
-    '- [ ] **The other thing is still to do**' '  id: still-open-thing' '  check: test -f missing.txt' > "$R/docs/list.md"
+    '- [ ] **The other thing is still to do**' '  id: still-open-thing' '  check: test -f missing.txt' '' \
+    '- [x] **KS-9 (P1) A finding closed long ago**' '  check: none - built' '' \
+    '- [ ] **KS-8 (P1) A finding still open**' '  check: none - waits' '' \
+    '- [x] **KS-7 (P1) Ticked, but its check fails**' '  check: test -f missing.txt' > "$R/docs/list.md"
   : > "$R/built.txt"
   ask "a question about a ledger item whose check passes" "Shall I build built-thing-here now?" deny "$R"
   ask "a question about a ledger item whose check fails" "Shall I build still-open-thing now?" allow "$R"
   ask "a slug that is no ledger id" "Shall I rename some-other-slug-here?" allow "$R"
+  # 2026-11-18: a title code of a TICKED entry (check none) is done too; an open one is a question
+  ask "a question naming the code of a ticked entry" "Shall I build the four functions (KS-9, KS-8)?" deny "$R"
+  ask "a question naming only an open code" "Shall I build KS-8 now?" allow "$R"
+  ask "a ticked entry whose check fails is open again (Windows review)" "Shall I reopen KS-7?" allow "$R"
   rm -f "$R/built.txt"
   ask "the same item once its check fails (control)" "Shall I build built-thing-here now?" allow "$R"
 else

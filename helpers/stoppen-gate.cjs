@@ -59,6 +59,7 @@
  * `own_open_patterns`, `own_open_negation_patterns`; fixture scripts/test-own-open-gate.sh.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
@@ -68,7 +69,7 @@ let data = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { data += c; });
 
-function allow() { process.exit(0); }
+function allow() { hookExit(0); }
 
 const HOOK_ECHO = /^Stop hook feedback:/;
 // Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
@@ -79,11 +80,11 @@ const TAIL_BYTES = 4 * 1024 * 1024;
 const TAIL_CHARS = 400; // only the closing stretch of the final text counts
 // The interactive question tool, and the one line that says it is missing here.
 const QUESTION_TOOL = 'AskUserQuestion';
-const NO_TOOL_LINE = /^[ \t>*_-]*⚙️?\s*no question tool:/imu;
+const NO_TOOL_LINE = /^[ \t>*_`-]*⚙️?\s*no question tool:/imu;
 // In the operator's autonomous run the question tool is the wrong way (skill autonomous-run,
 // hard gate 7): the question goes into the instance's ledger and the prose report says where.
 // The reply says so in one line; autonomous-mode.cjs tells the gate which way to demand.
-const AUTONOMOUS_LINE = /^[ \t>*_-]*⚙️?\s*autonomous:/imu;
+const AUTONOMOUS_LINE = /^[ \t>*_`-]*⚙️?\s*autonomous:/imu;
 const { autonomousMode } = require('./autonomous-mode.cjs');
 const { closeOpenEnds } = require('./close-stamp.cjs');
 const MAX_TOOL_BLOCKS = 2; // blocks per turn before a prose decision question is let through
@@ -168,7 +169,7 @@ const BUILTIN_OWN_OPEN = [
 const BUILTIN_OWN_NEGATION = ['^\\W{0,4}(none|nothing|no more|no open)\\b'];
 const NEGATION_BEFORE = /\b(nothing|no|none|not)\b[^.\n]{0,12}$/i;
 // The named turn ends autonomous-idle-gate reads.
-const NAMED_END = /^[ \t>*_-]*(?:\*\*)?(BLOCKED|POOL EMPTY|LIST EMPTY|HAND STEP)(?:\*\*)?:\s*\S/m;
+const NAMED_END = /^[ \t>*_`-]*(?:\*\*)?(BLOCKED|POOL EMPTY|LIST EMPTY|HAND STEP)(?:\*\*)?:\s*\S/m;
 const BUILTIN_CONDITION = [
   '\\b(once|when|after|as soon as|until|if)\\b',
 ];
@@ -402,7 +403,7 @@ process.stdin.on('end', () => {
         'turn), or arm the waiter it depends on, or state plainly who or what you wait for. ' +
         'If that is already true, re-issue the reply unchanged — it will pass.',
     }, input)));
-    process.exit(0);
+    hookExit(0);
   }
   if (own.length && !firstTurn(input)) {
     console.log(JSON.stringify(declare({
@@ -415,7 +416,7 @@ process.stdin.on('end', () => {
         'step for the operator or a question through the question tool is what ends this turn, say so and re-issue — ' +
         'the re-issue passes.',
     }, input)));
-    process.exit(0);
+    hookExit(0);
   }
   if (hits.length === 0) return allow();
   // The first reply after a session start ASKS on purpose (operator order 2026-10-07):
@@ -449,7 +450,7 @@ process.stdin.on('end', () => {
           `question went to the operator as closing prose, without ${QUESTION_TOOL} and without ` +
           `a "⚙ no question tool:" line. Question: ${hits.slice(0, 3).join(' · ')}`,
       }));
-      process.exit(0);
+      hookExit(0);
     }
     // Deliberately WITHOUT the "Closing question in this reply:" line: the stop dispatcher
     // compresses on it, and this instruction has to reach the agent in full.
@@ -461,7 +462,7 @@ process.stdin.on('end', () => {
         `Still closing on: ${hits.slice(0, 3).join(' · ')}\n` +
         `If only the operator can decide it, ${how} Otherwise do the work now and report.`,
     }, input)));
-    process.exit(0);
+    hookExit(0);
   }
 
   console.log(JSON.stringify(declare({
@@ -475,7 +476,7 @@ process.stdin.on('end', () => {
       'Otherwise: the question is answerable by measurement, docs or rules — do the ' +
       'work now and report the result instead of asking.',
   }, input)));
-  process.exit(0);
+  hookExit(0);
 });
 
 /** The first reply after a session start owns its "n items I can handle — shall I?" (open-items-gate). */

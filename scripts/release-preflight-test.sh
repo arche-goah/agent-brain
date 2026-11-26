@@ -468,6 +468,21 @@ RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
 check "control: the same repo, branch gone, clean scope passes" 0 $?
 R="$R_BEFORE_SCOPE"
 
+# 20. --strand (operator 2026-11-18: train 2.1.6 ran the preflight 47 times AFTER the merge): the strand checks run
+#     before the merge, check 8 over the planned members; the release-commit checks 1-5 do not run. A broken
+#     manifest is not reported in strand mode; a planned member without its macOS proof is.
+cp "$R/.claude-plugin/plugin.json" "$TMP/strand-manifest.bak"
+printf '%s\n' '{"name":"x","version":"0.0.1"}' > "$R/.claude-plugin/plugin.json"
+printf '%s\n' "$WIN_OK" > "$TMP/proof.txt"
+OUT="$(PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" RELEASE_STRAND_PRS="7" bash "$S" --strand v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"#7(no macOS)"*) said=0;; *) said=1;; esac
+case "$OUT" in *"plugin.json"*) said=1;; esac
+check "strand mode judges a planned member's OS proofs and skips the release-commit checks" 1 $(( rc * (1 - said) ))
+OUT="$(PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" --strand v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"strand mode needs RELEASE_STRAND_PRS"*) said=0;; *) said=1;; esac
+check "strand mode without its member list is red" 1 $(( rc * (1 - said) ))
+cp "$TMP/strand-manifest.bak" "$R/.claude-plugin/plugin.json"
+
 echo
 echo "$pass/$((pass+fail)) passed"
 [ "$fail" -eq 0 ]

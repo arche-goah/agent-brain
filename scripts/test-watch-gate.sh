@@ -261,6 +261,9 @@ printf 'name: CI\non:\n  push:\n    branches: [main]\n  pull_request:\njobs: {}\
 check "a [new branch] push on main+pull_request starts nothing" "$T/n1.jsonl" allow "$R"
 { user "fix"; idtool n2 "git -C $MON push origin fix/thing"; result n2 false "   1234567..89abcde  fix/thing -> fix/thing"; asst "pushed"; } > "$T/n2.jsonl"
 check "an update of an existing branch on main+pull_request is a run" "$T/n2.jsonl" block "$R"
+# 2026-11-18: a quiet push (-q) of a branch with no PR - no [new branch] line, but GitHub's "Create a pull request" hint
+{ user "fix"; idtool n7 "git -C $MON push -q -u origin fix/quiet"; result n7 false "remote: Create a pull request for 'fix/quiet' on GitHub by visiting:"; asst "pushed"; } > "$T/n7.jsonl"
+check "a quiet push GitHub answers with 'Create a pull request' starts nothing on main+pull_request" "$T/n7.jsonl" allow "$R"
 printf 'on:\n  push:\n    branches: [main]\n  pull_request:\n    types: [opened]\n' > "$MO/.github/workflows/ci.yml"
 { user "fix"; idtool n3 "git -C $MON push origin fix/thing"; result n3 false "   1234567..89abcde  fix/thing -> fix/thing"; asst "pushed"; } > "$T/n3.jsonl"
 check "pull_request.types without synchronize: an update starts nothing" "$T/n3.jsonl" allow "$R"
@@ -507,6 +510,9 @@ printf '{"instance":{"scripts/no-watch-here":{"why":"show machine offline, no po
 check "WATCH-GAP naming a declared but unrelated key (no watch_gap field)" "$T/wg0.jsonl" block "$WG"
 { user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "BLOCKED: PR review — no watcher can run here. WATCH-GAP: scripts/no-watch-here"; } > "$T/wg1.jsonl"
 check "BLOCKED + declared WATCH-GAP" "$T/wg1.jsonl" allow "$WG"
+# Windows review of #583 (2026-11-18): the whole marker line set as inline code is read too
+{ user "build the PR"; tool Bash "gh pr create --title x --body y"; asst '`BLOCKED: PR review - no watcher can run here. WATCH-GAP: scripts/no-watch-here`'; } > "$T/wg1b.jsonl"
+check "BLOCKED + declared WATCH-GAP set as inline code" "$T/wg1b.jsonl" allow "$WG"
 { user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "BLOCKED: PR review — WATCH-GAP: scripts/made-up"; } > "$T/wg2.jsonl"
 check "WATCH-GAP naming an undeclared key" "$T/wg2.jsonl" block "$WG"
 { user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "No watcher here. WATCH-GAP: scripts/no-watch-here"; } > "$T/wg3.jsonl"

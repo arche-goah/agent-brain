@@ -4,5 +4,7 @@
   "ledgers": [],
   "ratchet_since": "YYYY-MM-DD",
   "timeout_s": 5,
-  "budget_s": 30
+  "budget_s": 30,
+  "operator_question_patterns": [],
+  "_operator_question_patterns": "Regexes for a line in a ledger entry that asks the operator something, in this instance's words (e.g. QUESTION FOR THE OPERATOR). A question: field line always counts. Such an entry counts as the operator's whatever its exit says (helpers/decision-presentation-gate.cjs, scripts/open-items.py; incident 2026-11-23)."
 }
