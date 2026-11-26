@@ -60,6 +60,15 @@ printf '{broken' >"$T/b/.claude/rules/operator-lines.json"
 out="$(run "$T/b" "$DENY")"
 [[ "$out" == *'"permissionDecisionReason":"MECHANISM CHECK (core): a heredoc"'* ]] && ok "broken data file: fails open, unchanged" || bad "broken: '$out'"
 
+# Every node hook of the shipped hooks.json carries the preload (2026-11-26: #653 adds an Agent hook written before
+# this preload existed - whichever of the two merges second must fail here until its new line carries it).
+gone="$(node -e '
+const h=require(process.argv[1]).hooks, out=[];
+for (const ev of Object.values(h)) for (const m of ev) for (const k of m.hooks||[])
+  if (/^node\s/.test(k.command||"") && !/operator-lead\.cjs/.test(k.command)) out.push(k.command);
+process.stdout.write(out.join("\n"));' "$(native "$_D/../hooks/hooks.json")")"
+[ -z "$gone" ] && ok "every node hook in hooks/hooks.json carries the operator-lead preload" || bad "node hooks without the preload: $gone"
+
 echo
 [ "$fail" -eq 0 ] && echo "operator-lead fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"
