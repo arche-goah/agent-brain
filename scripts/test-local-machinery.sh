@@ -168,6 +168,18 @@ out=$(run); [[ -z "$out" ]] && ok "test-alpha-record-own-interval-silent" || bad
 decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","until":"2026-10-20","why":"checks a PR head","record":["https://github.com/o/r/pull/9",".claude-state/rig.jsonl"],"record_days":40}}}'
 out=$(run); [[ -z "$out" ]] && ok "test-alpha-record-list-with-url-silent" || bad "test-alpha-record-list-with-url-silent: $out"
 rm -f "$T/b/.claude-state/rig.jsonl"
+# Windows review of #650 (2026-11-24): a URL without its scheme and a folder of runs were "does not exist";
+# a folder's freshness is its newest file, not the folder's own mtime
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","until":"2026-10-20","why":"result on a page","record":"github.com/o/r/issues/3"}}}'
+out=$(run); [[ -z "$out" ]] && ok "test-alpha-record-url-without-scheme-silent" || bad "test-alpha-record-url-without-scheme-silent: $out"
+mkdir -p "$T/b/.claude-state/runs"; : > "$T/b/.claude-state/runs/a.md"; touch -t 202610070000 "$T/b/.claude-state/runs/a.md"
+touch -t 202601010000 "$T/b/.claude-state/runs"
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","until":"2026-10-20","why":"one file per run","record":".claude-state/runs"}}}'
+out=$(run); [[ -z "$out" ]] && ok "test-alpha-record-folder-fresh-file-silent" || bad "test-alpha-record-folder-fresh-file-silent: $out"
+touch -t 202609010000 "$T/b/.claude-state/runs/a.md"
+out=$(run); grep -q 'no living record: scripts/rig-check.sh (record .claude-state/runs not written for 37 d)' <<< "$out" \
+  && ok "test-alpha-record-folder-stale-loud" || bad "test-alpha-record-folder-stale-loud: $out"
+rm -rf "$T/b/.claude-state/runs"
 # Every alpha names its kind (operator 2026-11-17): test waits for its result, unreleased carries its core PR.
 decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"o/r#123"}}}'
 out=$(run); [[ -z "$out" ]] && ok "alpha-unreleased-with-core-pr-silent" || bad "alpha-unreleased-with-core-pr-silent: $out"

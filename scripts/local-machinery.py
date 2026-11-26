@@ -1023,6 +1023,7 @@ def alpha_kinds(decl):
 
 
 RECORD_DAYS = 7
+WEB_NO_SCHEME = re.compile(r"^(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|net|io|dev|ai|app)/\S*$", re.I)
 
 
 def alpha_records(decl, repo, home, today):
@@ -1058,11 +1059,26 @@ def alpha_records(decl, repo, home, today):
         except (TypeError, ValueError):
             days = RECORD_DAYS
         for r in recs:
-            if re.match(r"https?://\S+$", r) or CORE_PR.fullmatch(r):
+            # A URL without its scheme (github.com/...) is a place, not a path (Windows review of #650, 2026-11-24)
+            if re.match(r"https?://\S+$", r) or WEB_NO_SCHEME.match(r) or CORE_PR.fullmatch(r):
                 continue
-            # OS-1: the joined path only opens the file; the finding prints `r`, the declared text
-            p = os.path.join(home, r[2:]) if r.startswith("~/") else r
+            # OS-1: the joined path only opens the file; the finding prints `r`, the declared text.
+            # `~\` and a Git Bash drive path (`/c/<dir>/...`) were read as missing on Windows (same review).
+            p = os.path.join(home, r[2:]) if r[:2] in ("~/", "~\\") else r
+            m = re.match(r"^/([a-zA-Z])/(.*)$", p)
+            if m and os.name == "nt":
+                p = f"{m.group(1).upper()}:/{m.group(2)}"
             p = p if os.path.isabs(p) else os.path.join(repo, p)
+            if os.path.isdir(p):
+                # A folder of runs: its freshest file is the record's last write, not the folder's own mtime
+                # (that moves only when an entry is added or removed - same review)
+                times = [e.stat().st_mtime for e in os.scandir(p) if e.is_file()]
+                if not times:
+                    continue   # an empty folder counts as armed, like an empty file
+                age = (now - datetime.date.fromtimestamp(max(times))).days
+                if age > days:
+                    out.append(f"{key} (record {r} not written for {age} d)")
+                continue
             if not os.path.isfile(p):
                 out.append(f"{key} (record {r} does not exist)")
                 continue
