@@ -105,7 +105,10 @@ run_case en-want-me '"Tests are green. Do you want me to tag the release?"' bloc
 run_case en-you-shape '"Tests are green. Would you like the gate as a core PR for every brain?"' block "$CWD"
 run_case en-you-bold '"**To agree:** Do you want the gate in the core?"' block "$CWD"
 run_case en-you-wh '"Both fixes are ready. Which one do you want merged first?"' block "$CWD"
-run_case en-you-inline'"The rule forbids endings like do you want X? at the turn end, fixed."' allow "$CWD"
+run_case en-you-inline '"The rule forbids endings like do you want X? at the turn end, fixed."' allow "$CWD"
+# Windows content review 2026-11-26: a question after a line break or after another question was missed
+run_case en-you-newline '"Tests are green\n\nWould you like the gate as a core PR?"' block "$CWD"
+run_case en-you-after-question '"Ready? Do you want the merge now?"' block "$CWD"
 # English built-ins still grip with a language file present (merge, not replace)
 run_case en-with-pack '"Tests are green. Do you want me to tag the release?"' block "$DE"
 # Negative direction

@@ -105,9 +105,9 @@ const BUILTIN_PATTERNS = [
   // Measured 2026-11-26 on the macOS instance: a closing decision question in the operator's
   // language matched none of 16 phrase patterns of its pack; replay over 14 days, 2901
   // closing texts: 29 newly held, about 27 real questions to the operator. Same gap here.
-  '(?:^|[.!:]\\s+|\\*\\*\\s*)(?:do|does|did|would|will|should|shall|can|could|may|are|is|have) you\\b[^?\\n]{0,160}\\?',
+  '(?:^|[.!?:]\\s+|\\n\\s*|\\*\\*\\s*)(?:do|does|did|would|will|should|shall|can|could|may|are|is|have) you\\b[^?\\n]{0,160}\\?',
   // The same shape behind a question word ("Which one do you want?", "When should you ...").
-  '(?:^|[.!:]\\s+|\\*\\*\\s*)(?:what|which|when|where|who|how|why)\\b[^?.\\n]{0,60}\\b(?:do|does|did|would|will|should|shall|can|could|are|is) you\\b[^?\\n]{0,160}\\?',
+  '(?:^|[.!?:]\\s+|\\n\\s*|\\*\\*\\s*)(?:what|which|when|where|who|how|why)\\b[^?.\\n]{0,60}\\b(?:do|does|did|would|will|should|shall|can|could|are|is) you\\b[^?\\n]{0,160}\\?',
 
   // Shape 2: the HANDOFF, which asks nothing and stops just as hard. Measured on a
   // live instance 2026-08-31 — four deferrals in one day, none of them a question,
