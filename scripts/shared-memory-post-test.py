@@ -467,6 +467,49 @@ def main() -> int:
                  "--title", "Verify suite t5 on Windows", *body, me="kim-mac")
         check("--except with an unknown token is refused", r.returncode != 0 and "does not know" in r.stdout + r.stderr,
               r.stdout + r.stderr)
+    # 2026-11-27 (macOS instance): the one-machine reason "Windows workstation is down for now" passed the form checks and a
+    # review any device of the collaborator could answer went to one of them. From ONE_MACHINE_TARGET_SINCE the reason
+    # names its own target when another device (same person or same OS) could take the request - one reader with the lint.
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], capture_output=True)
+        (repo / "core").mkdir()
+        (repo / "core" / "LOG.md").write_text("# Log\n", encoding="utf-8")
+        (repo / "INDEX.md").write_text("# Index\n", encoding="utf-8")
+        (repo / "parties.json").write_text(json.dumps({"people": {
+            "kim": {"github": "k", "devices": {"kim-mac": {"os": "macos"}}},
+            "max": {"github": "m", "devices": {"max-win": {"os": "windows"}, "max-pc": {"os": "windows"}}},
+            "solo": {"github": "o", "devices": {"solo-box": {"os": "linux"}}}}}), encoding="utf-8")
+        since = import_module("shared-memory-parties").ONE_MACHINE_TARGET_SINCE
+        ev = ("--one-machine-evidence", "https://example.org/x")
+
+        def one(title: str, to: str, reason: str, date: str = since) -> tuple:
+            r = post(repo, "request", "--area", "core", "--to", to, "--title", title,
+                     "--body", "Read the draft and answer in the thread.", "--one-machine", reason, *ev,
+                     me="kim-mac", date=date)
+            from_slug = title.lower().replace(" ", "-")
+            return r, repo / "core" / f"request-{from_slug}-{date}.md"
+
+        before = files(repo)
+        r, f = one("Review t1", "max-pc", "Windows workstation is down for now")
+        check("refused: the measured case, a reason about another machine being down, points to person:/os: and --except",
+              r.returncode == 2 and "person:max" in r.stdout and "--except" in r.stdout and not f.is_file(),
+              r.stdout + r.stderr)
+        r, f = one("Review t2", "max-pc", "max-win lacks the USB dongle")
+        check("refused: a reason that names a sibling device instead of its target",
+              r.returncode == 2 and "different device" in r.stdout and not f.is_file(), r.stdout + r.stderr)
+        check("the refusals wrote nothing", files(repo) == before)
+        r, f = one("Review t3", "max-pc", "max-pc is the only machine with the USB dongle attached")
+        check("a reason naming its target with a property of its own passes", r.returncode == 0 and f.is_file(),
+              r.stdout + r.stderr)
+        r, f = one("Review t4", "solo-box", "the USB dongle sits at this box")
+        check("a device no other device could stand in for passes as before", r.returncode == 0 and f.is_file(),
+              r.stdout + r.stderr)
+        r, f = one("Review t5", "max-pc", "Windows workstation is down for now", date="2026-11-26")
+        check("a request dated before the cut-off is judged as before", r.returncode == 0 and f.is_file(),
+              r.stdout + r.stderr)
+        found = [i for i in sml.lint(repo)["findings"]["audience"] if i["issue"].startswith("one-machine reason")]
+        check("the lint finds nothing in what the tool wrote (one reader)", not found, json.dumps(found))
     # 2026-11-08 (macOS instance): the PR's GitHub repo given as --repo was refused as "not an area" - now named for what it is
     r = post(Path("o/some-suite"), "request", "--area", "core", "--to", "os:windows", "--title", "x", "--body", "y")
     check("--repo owner/repo (a GitHub repo, no folder) is refused and named as such",

@@ -624,6 +624,40 @@ def main() -> int:
         res = narrowed("")
         ok("54h control: the same entry without except: is named") if len(res) == 1 else bad(f"54h missed: {res}")
 
+        # 54i-54n. 9b from ONE_MACHINE_TARGET_SINCE: the one-machine reason speaks about its own target when another
+        #     device could take the request. Measured 2026-11-27 on the macOS instance: "Windows workstation is down for
+        #     now" passed the form checks and a review any device of the collaborator could answer went to one of them.
+        (repo / "parties.json").write_text(json.dumps({"people": {
+            "sam": {"github": "s", "devices": {"sam-mac": {"os": "macos"}}},
+            "max": {"github": "m", "devices": {"max-win": {"os": "windows"},
+                                               "max-pc": {"os": "windows", "aliases": ["desk-pc"]}}},
+            "solo": {"github": "o", "devices": {"solo-box": {"os": "linux"}}}}}), encoding="utf-8")
+        since = sml._parties.ONE_MACHINE_TARGET_SINCE
+
+        def target(reason: str, to: str = "max-pc", date: str = since) -> list:
+            stem = f"request-one-box-review-{date}"
+            extra = f"  one-machine: {reason}\n  one-machine-evidence: https://example.org/x\n"
+            text = fm(stem, date=date, von="sam-mac", audience=to).replace("---\n\n", extra + "---\n\n", 1)
+            (repo / "ops" / f"{stem}.md").write_text(text, encoding="utf-8")
+            res = [i for i in sml.lint(repo, bl)["findings"]["audience"] if i["issue"].startswith("one-machine reason")]
+            (repo / "ops" / f"{stem}.md").unlink()
+            return res
+
+        res = target("Windows workstation is down for now")
+        ok("54i the measured case: a reason about another machine being down is named, with --except in the fix") \
+            if len(res) == 1 and "--except" in res[0]["fix"] and "person:max" in res[0]["fix"] else bad(f"54i: {res}")
+        res = target("max-win lacks the USB dongle")
+        ok("54j a reason that names a sibling device instead of its target is named") \
+            if len(res) == 1 and "different device" in res[0]["issue"] else bad(f"54j: {res}")
+        res = target("max-pc is the only machine with the USB dongle attached")
+        ok("54k NEGATIVE: a reason naming its target with a property of its own is silent") if not res else bad(f"54k: {res}")
+        res = target("the desk-pc holds the licence dongle")
+        ok("54l NEGATIVE: an alias parties.json lists for the target counts as naming it") if not res else bad(f"54l: {res}")
+        res = target("the USB dongle sits at this box", to="solo-box")
+        ok("54m NEGATIVE: a device no other device could stand in for is judged as before") if not res else bad(f"54m: {res}")
+        res = target("Windows workstation is down for now", date="2026-11-26")
+        ok("54n NEGATIVE: entries before the cut-off are not re-judged") if not res else bad(f"54n: {res}")
+
         # 55-62. RELATIONS (check 11, written request state). A relation value names a file stem
         #     or a LOG id; from STATE_SINCE on a request to a party is a file, not a bare heading.
         repo = build(tmp / "relations")

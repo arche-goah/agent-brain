@@ -15,6 +15,7 @@ machines is not): `parties.json` at the repo root, one file every party reads.
                            "legacy_ids": ["<old id>", ...],
                            "private_repos_without_access": ["<owner>/<repo>", ...],
                            "except_topics": ["<area>", ...]}}}
+A device may carry `"aliases": ["<other name>", ...]` (optional): names a `one-machine:` reason may use for it.
 `os: null` = not known; such a device is reached by its id and its person, never by an
 `os:` category (an unknown OS is not guessed into one). `private_repos_without_access` (optional):
 repos that person's account cannot open; a category address whose text names one of them
@@ -309,6 +310,58 @@ ONE_MACHINE = re.compile(r"\bone[- ]machine:|\bnur diese maschine\b", re.I)
 # A narrowed address is no reason for one machine (Windows review of #657, 2026-11-24: an `except:` line - empty,
 # in the body, in a LOG section, with an unknown token - silenced the one-machine finding). A narrowed entry that
 # leaves one Windows device needs `one-machine:` like a direct address; one that leaves two or more is no finding.
+
+
+# A `one-machine:` reason must say why THAT machine (operator rule 2026-11-03: a check request goes to `os:<os>`, never to
+# one instance without a reason and evidence). Measured 2026-11-27 on the macOS instance: the reason "Windows workstation
+# is down for now" passed the form checks (more than the OS, evidence given) and a content review any device of the
+# collaborator could answer went to one of them - the reason spoke about ANOTHER machine and said nothing about its own
+# target. One reader for shared-memory-post.py (at writing) and shared-memory-lint.py (check 9b), from this date on.
+ONE_MACHINE_TARGET_SINCE = "2026-11-27"
+UNAVAILABLE = re.compile(r"\b(?:down|offline|off-line|(?:not|isn'?t) (?:running|available|reachable)"
+                         r"|switched off|turned off|powered off|asleep|unavailable|unreachable)\b", re.I)
+
+
+def _named(name: str, text: str) -> bool:
+    return bool(re.search(r"(?<![\w-])" + re.escape(name) + r"(?![\w-])", text, re.I))
+
+
+def one_machine_target_finding(reason: str, audience: str, parties: dict) -> tuple[str, str] | None:
+    """(issue, fix) when a `one-machine:` reason does not speak about the one device it addresses, else None.
+
+    Judged only when the audience is exactly one device of `people.<p>.devices` (legacy ids are names of the
+    past, no device) and another device could take the request: one of the same person, or one of the same OS.
+    Then the reason must name the addressed id (or one of its optional `aliases` in parties.json); a reason that
+    names a sibling device, or speaks of something being down / offline / not running, picks a machine by
+    excluding the others - that is `--except` on a broad address, not a reason."""
+    aud = tokens(audience)
+    if not parties or not reason or any(is_category(t) for t in aud):
+        return None
+    real = {}
+    for person, p in (parties.get("people") or {}).items():
+        for dev, d in ((p or {}).get("devices") or {}).items() if isinstance(p, dict) else ():
+            d = d if isinstance(d, dict) else {}
+            os_ = d.get("os").lower() if isinstance(d.get("os"), str) else None
+            real[dev.lower()] = (person.lower(), os_, [str(a) for a in d.get("aliases") or []])
+    target = [t for t in aud if t in real]
+    if len(target) != 1 or len(aud) != 1:
+        return None
+    dev = target[0]
+    person, os_, aliases = real[dev]
+    siblings = [d for d, (p, o, _a) in real.items() if d != dev and (p == person or (os_ and o == os_))]
+    if not siblings:
+        return None
+    wide = f"person:{person}" + (f" or os:{os_}" if os_ else "")
+    fix = (f"address {wide} (whoever comes first takes it) - excluding a machine is `--except` on that address, not "
+           f"a reason to pick one; a one-machine reason names {dev} and what only it has (a desk, a device, a file)")
+    other = [d for d in siblings if any(_named(n, reason) for n in [d] + real[d][2])]
+    if other:
+        return f"one-machine reason names a different device ({', '.join(sorted(other))}), not its target {dev}", fix
+    if UNAVAILABLE.search(reason):
+        return f"one-machine reason says something is unavailable - that excludes machines, it does not pick {dev}", fix
+    if not any(_named(n, reason) for n in [dev] + aliases):
+        return f"one-machine reason does not name its target {dev} - it says nothing about that machine", fix
+    return None
 
 
 def windows_check_to_one_device(text: str, audience: str, parties: dict) -> str | None:
