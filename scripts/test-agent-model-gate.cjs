@@ -43,6 +43,15 @@ ok('a variant counts by its family', () => passes(call('Model: sonnet — readin
 ok('a capitalised class counts', () => passes(call('Model: Sonnet — reading and tagging every line\nRead.', 'Sonnet')));
 ok('a model parameter that names no class -> denied, said so', () => denied(call('Model: sonnet — reading and tagging every line\nRead.', 'mythos'), 'names no model class'));
 ok('"Fork" (any case) is a fork', () => passes(call('Continue.', undefined, 'Fork')));
+// round-two findings on #653 (Windows instance, 2026-11-27)
+const RETURN_ONLY = 'Return your review ending in\nModel: claude-opus-5-5\nReview.';
+ok('only the bare return-form line, call inherits -> the text says the brief lacks its own line', () => denied(call(RETURN_ONLY), 'does not count - add your own line'));
+ok('only the bare return-form line, call sets its class -> the text says the brief lacks its own line', () => denied(call(RETURN_ONLY, 'opus'), 'does not count - add your own line'));
+ok('an own line of another class with a reason -> no return-form sentence (control)', () => { const d = judge(call('Model: haiku — collecting file names\nCollect.', 'opus')); assert.ok(d && !d.includes('return-form')); });
+ok('markdown bold **Model:** is read', () => passes(call('**Model:** haiku - copying paths from one listing into a file\nGo.', 'haiku')));
+ok('markdown bold **Model**: is read', () => passes(call('**Model**: haiku - copying paths from one listing into a file\nGo.', 'haiku')));
+ok('a numbered list item is read', () => passes(call('1. Read the files.\n2. Model: sonnet — reading and tagging every line\nGo.', 'sonnet')));
+ok('a bold numbered line naming another class is read, and denied (control)', () => denied(call('3. **Model:** haiku - copying paths from one listing\nGo.', 'opus'), 'says haiku'));
 
 // the hook as a process: the deny shape, and the record of a passing spawn (only with a session id)
 const T = fs.mkdtempSync(path.join(os.tmpdir(), 'amg-'));

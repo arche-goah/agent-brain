@@ -30,6 +30,8 @@ const fs = require('fs');
 const path = require('path');
 
 const MIN_WHY = 12;
+// a brief that only quotes the review's return form (`Model: <id>`) has no line of its own (review of #653, round two)
+const QUOTED = 'A quoted return-form line without a reason does not count - add your own line:';
 
 function tiers() {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'pr-risk.json'), 'utf8')).tiers || []; } catch (e) { return ['haiku', 'sonnet', 'opus', 'fable']; }
@@ -48,7 +50,8 @@ function classOf(word, classes) {
  * (the review form of docs/content-review.md asks the agent to return `Model: <family>`), so no single line is
  * "the" line: judge() takes the one that names the call's class. */
 function modelLines(prompt, classes) {
-  const re = /^[ \t>*-]*Model(?:[ \t]+choice)?:[ \t]*([A-Za-z][\w.\-[\]]*)[ \t]*(?:[-—–:,(][ \t]*)?(.*)$/gim;
+  // a list item (`-`, `*`, `1.`), a quote (`>`) and markdown bold (`**Model:**`) are the same line (review of #653, round two)
+  const re = /^[ \t>*-]*(?:\d+[.)][ \t]+)?[ \t>*-]*Model(?:[ \t]+choice)?\**:\**[ \t]*([A-Za-z][\w.\-[\]]*)[ \t]*(?:[-—–:,(][ \t]*)?(.*)$/gim;
   const out = [];
   for (let m; (m = re.exec(String(prompt || ''))) !== null;) {
     out.push({ cls: classOf(m[1], classes), why: m[2].replace(/[)\s]+$/, '').trim(), word: m[1] });
@@ -75,9 +78,10 @@ function judge(input, out) {
   if (!line) {
     const named = lines.filter((l) => l.cls);
     if (!named.length) return `the model line names "${lines[0].word}", which is no model class (${classes.join(', ')}, inherit).\n  ${form}`;
-    return `the model line says ${named.map((l) => l.cls).join(', ')}, the call ${called === 'inherit' ? 'sets no model (it inherits the session\'s)' : 'sets model ' + called}. Reason and call say the same thing - change one of them (every Model line is read; the one naming the call's class counts).`;
+    const quoted = named.every((l) => l.why.length < MIN_WHY) ? `\n${QUOTED}\n  ${form}` : '';
+    return `the model line says ${named.map((l) => l.cls).join(', ')}, the call ${called === 'inherit' ? 'sets no model (it inherits the session\'s)' : 'sets model ' + called}. Reason and call say the same thing - change one of them (every Model line is read; the one naming the call's class counts).${quoted}`;
   }
-  if (line.why.length < MIN_WHY) return `the model line gives no reason ("${line.why}"). Say why ${line.cls} fits THIS task: reading and collecting, or judging, verifying, writing.`;
+  if (line.why.length < MIN_WHY) return `the model line gives no reason ("${line.why}"). Say why ${line.cls} fits THIS task: reading and collecting, or judging, verifying, writing.\n${QUOTED}\n  ${form}`;
   if (out) Object.assign(out, { model: line.cls, called: callWord, type: String(ti.subagent_type || 'general-purpose'), why: line.why.slice(0, 300) });
   return null;
 }

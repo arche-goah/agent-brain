@@ -226,7 +226,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/agent-model-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/hooks/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/agent-model-gate.cjs\"",
             "timeout": 5
           }
         ]
