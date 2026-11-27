@@ -317,7 +317,7 @@ ONE_MACHINE = re.compile(r"\bone[- ]machine:|\bnur diese maschine\b", re.I)
 # is down for now" passed the form checks (more than the OS, evidence given) and a content review any device of the
 # collaborator could answer went to one of them - the reason spoke about ANOTHER machine and said nothing about its own
 # target. One reader for shared-memory-post.py (at writing) and shared-memory-lint.py (check 9b), from this date on.
-ONE_MACHINE_TARGET_SINCE = "2026-11-27"
+ONE_MACHINE_TARGET_SINCE = "2026-11-28"
 UNAVAILABLE = re.compile(r"\b(?:down|offline|off-line|(?:not|isn'?t) (?:running|available|reachable)"
                          r"|switched off|turned off|powered off|asleep|unavailable|unreachable)\b", re.I)
 

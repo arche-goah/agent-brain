@@ -505,7 +505,7 @@ def main() -> int:
         r, f = one("Review t4", "solo-box", "the USB dongle sits at this box")
         check("a device no other device could stand in for passes as before", r.returncode == 0 and f.is_file(),
               r.stdout + r.stderr)
-        r, f = one("Review t5", "max-pc", "Windows workstation is down for now", date="2026-11-26")
+        r, f = one("Review t5", "max-pc", "Windows workstation is down for now", date="2026-11-27")
         check("a request dated before the cut-off is judged as before", r.returncode == 0 and f.is_file(),
               r.stdout + r.stderr)
         found = [i for i in sml.lint(repo)["findings"]["audience"] if i["issue"].startswith("one-machine reason")]

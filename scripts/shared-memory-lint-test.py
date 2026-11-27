@@ -655,7 +655,7 @@ def main() -> int:
         ok("54l NEGATIVE: an alias parties.json lists for the target counts as naming it") if not res else bad(f"54l: {res}")
         res = target("the USB dongle sits at this box", to="solo-box")
         ok("54m NEGATIVE: a device no other device could stand in for is judged as before") if not res else bad(f"54m: {res}")
-        res = target("Windows workstation is down for now", date="2026-11-26")
+        res = target("Windows workstation is down for now", date="2026-11-27")
         ok("54n NEGATIVE: entries before the cut-off are not re-judged") if not res else bad(f"54n: {res}")
 
         # 55-62. RELATIONS (check 11, written request state). A relation value names a file stem
