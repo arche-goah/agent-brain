@@ -292,8 +292,28 @@ mode "short word: a later plain prompt keeps it (control)" "$f" "$EN" autonomous
 # 2026-11-24, macOS instance: the answer that NAMES the mode. The agent asked "work through it autonomously or stay
 # interactive?" with options named after the modes; the chosen "Autonomous, go on" carried no yes-word, was read as a
 # no, and an edit behind an ask rule went to the harness dialog in a run the operator believed autonomous (376 minutes).
-f="$T/ma1.jsonl"; { user "anything open for me?"; answer '"Shall I work through it autonomously or stay interactive?"="Autonomous, go on (Recommended)"'; } > "$f"
+# An answered question whose options are known: the AskUserQuestion input carries the labels, as in a real transcript.
+# $1 tool id, $2 timestamp ("" = none), $3 question, $4 JSON array of option labels, $5 the answer
+oanswer() { node -e 'const [id, ts, q, l, a] = process.argv.slice(1);
+  const options = JSON.parse(l).map((label) => ({ label, description: "" }));
+  console.log(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: "AskUserQuestion", input: { questions: [{ question: q, header: "Mode", options, multiSelect: false }] } }] } }));
+  const u = { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: `Your questions have been answered: "${q}"="${a}". You can now continue` }] } };
+  if (ts) u.timestamp = ts;
+  console.log(JSON.stringify(u));' "$@"; }
+MQ="Shall I work through it autonomously or stay interactive?"
+f="$T/ma1.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous, go on (Recommended)", "Stay interactive"]' "Autonomous, go on (Recommended)"; } > "$f"
 mode "an answer to the mode question that names the autonomous mode switches it on" "$f" "$EN" autonomous
+f="$T/ma1n.jsonl"; { user "anything open for me?"; answer "\"$MQ\"=\"Autonomous, go on (Recommended)\""; } > "$f"
+mode "the same answer with no option labels known: no chosen option, the head rule does not apply" "$f" "$EN" interactive
+# Free text typed through "Other" is no option (review of #654, Windows instance 2026-11-27): both switched the run on.
+f="$T/ma1f.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous (Recommended)", "Stay interactive"]' "autonomous is too risky today, stay here"; } > "$f"
+mode "free text that starts with the on-word is no chosen option" "$f" "$EN" interactive
+f="$T/ma1g.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous (Recommended)", "Stay interactive"]' "Autonomously? not yet, ask me first"; } > "$f"
+mode "free text with a questioning on-word is no chosen option" "$f" "$EN" interactive
+f="$T/ma1h.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous (Recommended)", "Stay interactive"]' "Autonomous (Recommended)"; } > "$f"
+mode "the chosen option itself still switches it on (control)" "$f" "$EN" autonomous
+f="$T/ma1i.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Interactive (Recommended)", "Autonomous"]' "Interactive (Recommended)"; } > "$f"
+mode "the option naming the other mode keeps it off (control)" "$f" "$EN" interactive
 f="$T/ma2.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Shall I work through it autonomously or stay in ask mode?"="Ask mode"'; } > "$f"
 mode "an answer that names the other mode keeps it off" "$f" "$EN" interactive
 f="$T/ma3.jsonl"; { user "anything open for me?"; answer '"Continue autonomously?"="No, not autonomously"'; } > "$f"
@@ -329,6 +349,35 @@ got="$(node "$M" "$(native "$T/sess-i.jsonl")" "$(native "$IC")" --trace)"
   && ok "--trace lists both switches with time, reader and text" || bad "--trace: $got"
 got="$(node "$M" "$(native "$T/sess-i.jsonl")" "$(native "$IC")" --why)"
 printf '%s' "$got" | grep -aq '^last switch: .* -> interactive .* (2 switch(es) in this session' && ok "--why names the last switch and the count" || bad "--why: $got"
+
+# A matched answer record that does not read mode_on vetoes the words' on at the mode question (review of #654, Windows
+# instance 2026-11-27: "Autonomous (Recommended)" with a record mode_on:false read autonomous). Cwd with a space.
+ICS="$T/int sp"; mkdir -p "$ICS/.claude-state"
+f="$T/sess-j.jsonl"; { tuser 2026-11-27T10:00:00Z "status?"; oanswer t5 2026-11-27T10:05:00Z "$MQ" '["Autonomous (Recommended)", "Stay interactive"]' "Autonomous (Recommended)"; } > "$f"
+arec 2026-11-27T10:05:02Z sess-j false false "$MQ" > "$ICS/.claude-state/intent-classifier.jsonl"
+mode "mode question, option names autonomous, record mode_change:false mode_on:false: no switch on" "$f" "$ICS" interactive
+arec 2026-11-27T10:05:02Z sess-j true false "$MQ" > "$ICS/.claude-state/intent-classifier.jsonl"
+mode "mode question, option names autonomous, record mode_change:true mode_on:false: no switch on" "$f" "$ICS" interactive
+arec 2026-11-27T10:05:02Z sess-j true true "$MQ" > "$ICS/.claude-state/intent-classifier.jsonl"
+mode "model and words agree on on: it switches on (control)" "$f" "$ICS" autonomous
+: > "$ICS/.claude-state/intent-classifier.jsonl"
+mode "no record: the chosen option decides (control)" "$f" "$ICS" autonomous
+
+# --why ends with the value it explains (review of #654, Windows instance 2026-11-27): this session's close stamp
+# after the order is a switch of its own; the bare value and the last switch agree.
+CL2="$T/close2"; mkdir -p "$CL2/.claude-state"
+f="$T/sess-k.jsonl"; { userAt "2026-01-01T10:00:00Z" "work through the list autonomously"; asst "x"; } > "$f"
+printf 'sess-k\n- close\n' > "$CL2/.claude-state/session-close.stamp"
+got="$(node "$M" "$(native "$f")" "$(native "$CL2")" --why)"
+[ "$(printf '%s\n' "$got" | head -1)" = interactive ] && printf '%s' "$got" | grep -aq "^last switch: .* -> interactive by this session's close (read by close stamp)" \
+  && ok "--why after the close: the close is the last switch, same verdict as the value" || bad "--why after close: $got"
+got="$(node "$M" "$(native "$f")" "$(native "$CL2")" --trace)"
+case "$(printf '%s\n' "$got" | tail -1)" in *" -> interactive by this session's close "*) ok "--trace after the close ends with the close";; *) bad "--trace after close: $got";; esac
+# The ask window: a question answered in the asking turn ends the run; --why must end interactive as the value does.
+f="$T/aw1.jsonl"; { userAt "2026-01-01T10:00:00Z" "autonomous, please"; userAt "2026-01-01T10:10:00Z" "anything open for me?"; answer '"Release now?"="Yes"'; } > "$f"
+got="$(node "$M" "$(native "$f")" "$(native "$NONE")" --why)"
+[ "$(printf '%s\n' "$got" | head -1)" = interactive ] && printf '%s' "$got" | grep -aq '^last switch: .* -> interactive ' \
+  && ok "--why after a question answered in the ask window ends interactive like the value" || bad "--why ask window: $got"
 
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }

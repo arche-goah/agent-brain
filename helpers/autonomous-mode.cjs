@@ -176,14 +176,19 @@ function asksMode(on, question) {
  * an edit behind an ask rule through to the harness dialog, and the run stood 376 minutes at it. An answer that
  * names the mode is that mode; an off-word or a leading no wins over everything.
  */
-function modeAnswer(w, answer) {
+function modeAnswer(w, answer, labels) {
   const a = String(answer || '');
   if (w.off.test(a) || (w.no && w.no.test(a))) return false;
-  // The on-word counts only as the answer's HEAD - the option is named after the mode ("Autonomous, go on"). An
-  // on-word further in ("only autonomous or released") is an answer ABOUT autonomy: replayed over 119 answered mode
-  // questions of the proving instance, the head rule reads two missed switches right and adds no false one; an
-  // on-word anywhere would have switched a run on at a design question (2026-11-18).
-  if (w.yes.test(a) || w.on.test(a.trim().split(/\s+/)[0] || '')) return true;
+  // The on-word counts only as the HEAD of an OPTION the operator chose - the option is named after the mode
+  // ("Autonomous, go on"). An on-word further in ("only autonomous or released") is an answer ABOUT autonomy: replayed
+  // over 119 answered mode questions of the proving instance, the head rule reads two missed switches right and adds no
+  // false one; an on-word anywhere would have switched a run on at a design question (2026-11-18). Free text typed
+  // through "Other" is no option (review of #654, Windows instance 2026-11-27: "autonomous is too risky today, stay
+  // here" and "Autonomously? not yet, ask me first" switched the run on): the answer must BE one of the question's
+  // option labels from the AskUserQuestion input (or start with one, a multi-select joins them with ", ").
+  // No labels known = no option = the head rule does not apply.
+  const chosen = (labels || []).find((l) => l && (a.trim() === l.trim() || a.startsWith(`${l.trim()}, `)));
+  if (w.yes.test(a) || (chosen && w.on.test(chosen.trim().split(/\s+/)[0] || ''))) return true;
   return null;
 }
 
@@ -291,6 +296,8 @@ function promptModes(transcriptPath, cwd) {
   const out = [];
   let state = w.initial;
   const askIds = new Set();
+  // question text -> its option labels, from the AskUserQuestion input (modeAnswer counts only a chosen option)
+  const labelsOf = new Map();
   const known = intents(transcriptPath, cwd);
   // The asking prompt whose turn is still running with no question answered yet (its `window` is open).
   let pending = null;
@@ -306,7 +313,15 @@ function promptModes(transcriptPath, cwd) {
     if (line.includes('"AskUserQuestion"')) {
       try {
         const c = (JSON.parse(line).message || {}).content;
-        for (const b of Array.isArray(c) ? c : []) if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion') askIds.add(b.id);
+        for (const b of Array.isArray(c) ? c : []) {
+          if (!b || b.type !== 'tool_use' || b.name !== 'AskUserQuestion') continue;
+          askIds.add(b.id);
+          for (const qq of (b.input && Array.isArray(b.input.questions)) ? b.input.questions : []) {
+            if (qq && typeof qq.question === 'string') {
+              labelsOf.set(qq.question, (Array.isArray(qq.options) ? qq.options : []).map((o) => (o && typeof o.label === 'string' ? o.label : '')).filter(Boolean));
+            }
+          }
+        }
       } catch (e) { /* not a record */ }
     }
     if (!line.includes('"user"') && !line.includes('queued_command')) continue;
@@ -339,12 +354,15 @@ function promptModes(transcriptPath, cwd) {
         // The model alone never switches ON (operator decision 2026-11-17 on the proving instance: on a disagreement
         // between classifier and words, never toward autonomous): for an answer it can end the mode, and it can veto an
         // on-word the words would take for an order; switching on needs the words too.
-        const wordsOn = asksMode(w.on, q) ? modeAnswer(w, a) === true : ordersOn(w.on, a);
+        const labels = labelsOf.get(q) || [];
+        const wordsOn = asksMode(w.on, q) ? modeAnswer(w, a, labels) === true : ordersOn(w.on, a);
         if (wants && ia.mode_off) state = false;
         else if (wants && ia.mode_on && wordsOn) state = true;
         else if (byModel && ia.mode_on && !wordsOn) continue;   // model on, words not: no switch
-        // null (the answer names neither mode nor yes/no) stays on the safe side: interactive.
-        else if (asksMode(w.on, q)) state = modeAnswer(w, a) === true;
+        // null (the answer names neither mode nor yes/no) stays on the safe side: interactive. A matched record that
+        // does not read mode_on vetoes the words' on (review of #654, Windows instance 2026-11-27: "Autonomous
+        // (Recommended)" with a record mode_on:false read autonomous - a disagreement resolved towards autonomous).
+        else if (asksMode(w.on, q)) state = wordsOn && !(byModel && !ia.mode_on);
         else if (byModel) continue;          // the model read no mode order in an answer to another question
         else if (w.off.test(a)) state = false;
         else if (ordersOn(w.on, a)) state = true;
@@ -469,16 +487,21 @@ function modeReason(transcriptPath, cwd) {
   return `the run is autonomous by an order after the operator's newest prompt (${reader})`;
 }
 
-/** A close stamp of this session written after `since` (ms; null = any time). */
-function closedAfter(transcriptPath, cwd, since) {
+/** The time (ms) of this session's close stamp, or null (no stamp, or another session's). */
+function closeStampAt(transcriptPath, cwd) {
   const dir = cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const stamp = path.join(dir, '.claude-state', 'session-close.stamp');
   let st;
   let sid;
-  try { st = fs.statSync(stamp); sid = (fs.readFileSync(stamp, 'utf8').split(/\r?\n/)[0] || '').trim(); } catch (e) { return false; }
+  try { st = fs.statSync(stamp); sid = (fs.readFileSync(stamp, 'utf8').split(/\r?\n/)[0] || '').trim(); } catch (e) { return null; }
   const session = path.basename(String(transcriptPath || ''), '.jsonl');
-  if (sid && session && sid !== session) return false; // another session's close
-  return since == null || st.mtimeMs >= since;
+  if (sid && session && sid !== session) return null; // another session's close
+  return st.mtimeMs;
+}
+/** A close stamp of this session written after `since` (ms; null = any time). */
+function closedAfter(transcriptPath, cwd, since) {
+  const at = closeStampAt(transcriptPath, cwd);
+  return at != null && (since == null || at >= since);
 }
 
 /**
@@ -492,6 +515,17 @@ function switches(transcriptPath, cwd) {
   for (const m of promptModes(transcriptPath, cwd)) {
     if (m.autonomous !== prev) out.push({ at: m.at, autonomous: m.autonomous, kind: m.answer ? 'answer' : 'prompt', by: m.by || 'words', text: String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 120) });
     prev = m.autonomous;
+  }
+  // The history ends where the value ends (review of #654, Windows instance 2026-11-27: after this session's close
+  // the bare call said interactive while --why named an autonomous last switch). A switch autonomousMode() applies
+  // beyond the prompts - the close stamp - is named as a switch of its own; any other difference is named too, never
+  // left standing.
+  const now = autonomousMode(transcriptPath, cwd);
+  if (now !== prev) {
+    const closeAt = now ? null : closeStampAt(transcriptPath, cwd);
+    out.push(closeAt != null
+      ? { at: closeAt, autonomous: now, kind: 'close', by: 'close stamp', text: 'session-close stamp of this session, written after the order in force' }
+      : { at: null, autonomous: now, kind: 'reader', by: 'reader', text: 'the reader\'s verdict differs from the last prompt or answer' });
   }
   return out;
 }
@@ -516,7 +550,7 @@ if (require.main === module) {
   const trace = args.includes('--trace');
   if (!trace && !args.includes('--why')) return;
   const sw = switches(tp || '', cwd);
-  const line = (x) => `${x.at ? new Date(x.at).toISOString().slice(0, 19) + 'Z' : 'time unknown'} -> ${x.autonomous ? 'autonomous' : 'interactive'} by the operator's ${x.kind} (read by ${x.by}): "${x.text}"`;
+  const line = (x) => `${x.at ? new Date(x.at).toISOString().slice(0, 19) + 'Z' : 'time unknown'} -> ${x.autonomous ? 'autonomous' : 'interactive'} ${x.kind === 'close' ? "by this session's close" : x.kind === 'reader' ? 'by the reader' : `by the operator's ${x.kind}`} (read by ${x.by}): "${x.text}"`;
   if (!sw.length) console.log('no switch in this session: the start state holds');
   else if (trace) for (const x of sw) console.log(line(x));
   else console.log(`last switch: ${line(sw[sw.length - 1])} (${sw.length} switch(es) in this session; --trace lists them)`);
