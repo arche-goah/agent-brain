@@ -536,6 +536,16 @@ def main():
                               % (event, m.group(2), "every call it matches is refused (onFailure: block); unwire it "
                                  "or update the core" if on_failure == "block" else "the hook errors on every call; unwire it "
                                  "or update the core"))
+            # A preload (`node -r <file> <hook>`, hooks/operator-lead.cjs since #683) is the same class for EVERY hook
+            # that names it: node stops with "Cannot find module" before the hook runs (Windows review of #683, probe
+            # 4: a core checkout older than the hooks.json that names it refuses every call). Not under helpers/ or
+            # scripts/, so the line above never saw it.
+            for pre in re.findall(r'(?:^|\s)-r\s+"?(?:\$\{?CLAUDE_PROJECT_DIR\}?/)?(core/[^"\s]+)"?', cmd):
+                if not os.path.isfile(os.path.join(root, pre)):
+                    broken.append("%s: the preload %s is named but the consumed core does not ship it - %s"
+                                  % (event, pre, "every hook that names it refuses every call it matches (Cannot find "
+                                     "module); update the core, or take -r out of the hook commands"))
+    broken = list(dict.fromkeys(broken))   # one preload names many hooks: each finding once
     # Same class behind the dispatcher, with the opposite effect: stop-dispatcher.cjs SKIPS a
     # registered check whose file is missing (`if (!fs.existsSync(cmd)) return resolve(null)`),
     # so that gate falls away without a word while the selftest counts it as covered.

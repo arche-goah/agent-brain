@@ -17,6 +17,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { stripLead } = require('./operator-lines.cjs');
 
 const HEAD = /^(?:PreToolUse|PostToolUse):\S+ hook error:\s*/;
 // `BLOCKED (instance-key-gate, change level)` names its gate before the comma; a bare `BLOCKED:` (file-guard) names
@@ -34,8 +35,10 @@ function hookRx() {
   return hookForm;
 }
 
-function gateLabel(rawText) {
-  const t = String(rawText || '').trim().replace(HEAD, '');
+function gateLabel(rawText, root) {
+  // The operator's sentence in front of a hold (hooks/operator-lead.cjs) is no label: taken off first (Windows review
+  // of #683: with it every hold read "a hook"). Its text comes from the brain's operator-lines.json - one source.
+  const t = stripLead(String(rawText || '').trim(), root).replace(HEAD, '');
   const m = LABEL.exec(t);
   const own = m && (m[1] || m[2]);
   if (own && own.trim()) return own.trim();

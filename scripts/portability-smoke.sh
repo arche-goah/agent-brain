@@ -430,6 +430,7 @@ printf '{"domains": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/h
 printf '{"suites": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/hookbrain/.claude/rules/live-watchdog.json"
 cp "$CORE/templates/settings.json" "$T/hookbrain/core/templates/"
 [ -f "$CORE/hooks/hooks.json" ] && cp "$CORE/hooks/hooks.json" "$T/hookbrain/core/hooks/"
+cp "$CORE"/hooks/*.cjs "$T/hookbrain/core/hooks/" 2>/dev/null   # the preload the hook commands name (#683)
 cp "$CORE"/helpers/*.cjs "$CORE"/helpers/*.sh "$T/hookbrain/core/helpers/" 2>/dev/null
 # the brain's settings as a brain without the plugin wires them: template + core hooks
 wire_hookbrain() {
