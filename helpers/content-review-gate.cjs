@@ -39,7 +39,9 @@
  * CHECK 4 — `gh pr merge`: the thread (comments and review bodies) holds a content review by an instance
  *   OTHER than the author's (key in the body; a body without a key accepts any keyed review) whose `Model:`
  *   is at least the review minimum. A merge train PR (body opens with `## Merge train`) is checked per
- *   member listed as `- #<n>`.
+ *   member listed as `- #<n>`. VERDICT (2026-11-27, the macOS instance): per reviewing key the latest content review
+ *   decides, and one whose `Verdict:` line says not OK / changes needed / blocked / request changes does not count
+ *   (two open PRs carried such a verdict at their heads and would have passed). No Verdict line = counts as before.
  * Override, said in the call: `# CONTENT-REVIEW-OK: <why>` (a repo with no second reviewer, a pure data
  * PR) — it goes to the change log like every marker.
  *
@@ -124,16 +126,40 @@ function prRisk(pr) {
   return Math.max(declared(pr.body), floor(files).risk, 0);
 }
 
-/** Does the PR thread hold a content review by another instance, on a model the risk allows? */
+/** A review's `Verdict:` line (trimmed), or null when it has none. */
+function verdictLine(text) {
+  const m = /^\s*(?:[-*>]\s*)*(?:\*\*)?verdict(?:\*\*)?\s*:[^\n]*/im.exec(String(text || ''));
+  return m ? m[0].trim() : null;
+}
+/** A verdict that holds the merge: `not ok`, `changes needed`, `blocked`, `request(ed) changes` right after `Verdict:`. */
+const negative = (line) => /verdict\s*:\s*(?:not\s+ok|changes\s+needed|blocked|request(?:ed)?\s+changes)\b/i
+  .test(String(line || '').replace(/[*`_]/g, ''));
+
+/** Does the PR thread hold a content review by another instance, on a model the risk allows, whose verdict is not
+ * negative? Per reviewing key the LATEST content review decides (a later OK supersedes an earlier not OK; measured
+ * 2026-11-27 on the macOS instance: #654 "Verdict: not OK as is" and #662 "Verdict: changes needed" would have merged).
+ * A review without a Verdict line counts as before. Returns { ok, held: [{ key, line }] } - `held` names the negative
+ * latest reviews, for the deny text. */
 function reviewed(pr) {
   const author = (KEY_RX.exec(String(pr.body || '')) || [])[1];
   const least = need(RISKS[prRisk(pr)], 'review');
-  return [...(pr.comments || []), ...(pr.reviews || [])].some((c) => {
-    const t = String((c && c.body) || '');
-    const k = (KEY_RX.exec(t) || [])[1];
-    return k && (!author || k.toLowerCase() !== author.toLowerCase()) && missing(t, labelsAt(c)).length === 0
-      && tier(modelLine(t)) >= least;
-  });
+  const when = (c) => String((c && (c.createdAt || c.submittedAt)) || '');
+  const latest = {};
+  [...(pr.comments || []), ...(pr.reviews || [])].map((c, i) => ({ c, i }))
+    .sort((a, b) => (when(a.c) < when(b.c) ? -1 : when(a.c) > when(b.c) ? 1 : a.i - b.i))
+    .forEach(({ c }) => {
+      const t = String((c && c.body) || '');
+      const k = (KEY_RX.exec(t) || [])[1];
+      if (k && (!author || k.toLowerCase() !== author.toLowerCase()) && missing(t, labelsAt(c)).length === 0) latest[k.toLowerCase()] = t;
+    });
+  const held = [];
+  let ok = false;
+  for (const [key, t] of Object.entries(latest)) {
+    const line = verdictLine(t);
+    if (negative(line)) held.push({ key, line });
+    else if (tier(modelLine(t)) >= least) ok = true;
+  }
+  return { ok, held };
 }
 
 /** The caller's model, measured: the last assistant record's `message.model` of a known family. null when unreadable. */
@@ -449,12 +475,20 @@ function checkMerge(cmd, ps) {
     return block(`${t.repo}#${t.nr} - a merge train whose body names no member in the form \`- #N <branch> <sha>\` (7-40 hex), ` +
       'so no member review could be read. Write the members as merge-train.sh writes them, or add `# CONTENT-REVIEW-OK: <why>`.');
   }
-  const open = [];
+  const open = [], held = [];
   const read = train ? readPrs(t.repo, members) : {};
   for (const n of members) {
     let p = pr;
     if (train) { p = read[n]; if (!p) { open.push(`#${n} (unreadable)`); continue; } }
-    if (!reviewed(p)) open.push(`#${n} (risk ${RISKS[prRisk(p)]}, review on ${CFG.tiers[need(RISKS[prRisk(p)], 'review')]} or above)`);
+    const r = reviewed(p);
+    if (r.ok) continue;
+    if (r.held.length) held.push(...r.held.map((h) => `#${n}: instance ${h.key} - "${h.line}"`));
+    else open.push(`#${n} (risk ${RISKS[prRisk(p)]}, review on ${CFG.tiers[need(RISKS[prRisk(p)], 'review')]} or above)`);
+  }
+  if (held.length) {
+    return block(`${t.repo}#${t.nr} - the latest content review says the change is not ready:\n  ${held.join('\n  ')}\n` +
+      'What lifts it: a later content review by that instance with a positive verdict (e.g. `Verdict: OK at <sha>`), ' +
+      'or `# CONTENT-REVIEW-OK: <why>` in the call.' + (open.length ? `\nAlso without a content review: ${open.join(', ')}.` : ''));
   }
   if (!open.length) return 0;
   return block(`${t.repo}#${t.nr} - no content review by another instance on: ${open.join(', ')}.\n` +

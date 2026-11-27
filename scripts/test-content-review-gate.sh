@@ -231,6 +231,43 @@ probe "merge reviewed on a too small model" "$M" block
 pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$T/c-os.md"
 probe "merge with an OS check only" "$M" block
 probe "override names why" "$M # CONTENT-REVIEW-OK: data PR, no second reviewer in this repo" allow
+# VERDICT (2026-11-27, macOS instance): #654 "Verdict: not OK as is" and #662 "Verdict: changes needed (small)" at their
+# heads would have passed - the verdict was never read. The latest content review per key decides.
+vrev() { printf '%s\nVerdict: %s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$GOOD" "$1" "$B" > "$T/$2"; }
+vrev "not OK as is - the reader keeps a second copy" v-notok.md
+vrev "changes needed (small) - one fixture missing" v-changes.md
+vrev "OK at ce21a59." v-ok.md
+vrev "OK with findings - one non-blocking note" v-okfind.md
+printf '%s\n**Verdict:** **Not OK** - blocked on the reader\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$GOOD" "$B" > "$T/v-bold.md"
+d1=2026-11-20T10:00:00Z; d2=2026-11-21T10:00:00Z
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/v-notok.md")@$d1"
+probe "merge on a review whose verdict is not OK" "$M" block
+out=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$T/core")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":\"$M\"}}" \
+  | PR_JSON="$(native "$T/pr.json")" CONTENT_REVIEW_GATE_GH="$(native "$T/gh.js")" node "$(native "$GATE")" 2>&1)
+case "$out" in *"o/r#5"*"$B"*"Verdict: not OK as is"*"CONTENT-REVIEW-OK"*) ok "  ... the deny names PR, key, verdict line and what lifts it";; *) bad "  ... deny text: ${out:0:300}";; esac
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "" "$(native "$T/v-changes.md")@$d1"
+probe "merge on a review whose verdict is changes needed (as a review)" "$M" block
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/v-bold.md")@$d1"
+probe "merge on a bold **Verdict:** **Not OK**" "$M" block
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/v-notok.md")@$d1" "$(native "$T/v-ok.md")@$d2"
+probe "a later OK by the same key supersedes its not OK" "$M" allow
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/v-notok.md")@$d2" "$(native "$T/v-ok.md")@$d1"
+probe "a later not OK by the same key supersedes its OK (the other direction)" "$M" block
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/v-okfind.md")@$d1"
+probe "merge on OK with findings" "$M" allow
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/c-other.md")@$d1"
+probe "merge on a review with no Verdict line (counts as before)" "$M" allow
+pr "## Merge train tv
+- #7 fix/a abc1234
+- #8 fix/b def5678" "" ""
+printf '{"body":"Risk: high - gate","files":[{"path":"helpers/x-gate.cjs"}],"comments":[{"body":%s}],"reviews":[]}' \
+  "$(node -e 'process.stdout.write(JSON.stringify(require("fs").readFileSync(process.argv[1],"utf8")))' "$T/v-ok.md")" > "$T/pr-7.json"
+printf '{"body":"Risk: high - gate","files":[{"path":"helpers/x-gate.cjs"}],"comments":[{"body":%s}],"reviews":[]}' \
+  "$(node -e 'process.stdout.write(JSON.stringify(require("fs").readFileSync(process.argv[1],"utf8")))' "$T/v-notok.md")" > "$T/pr-8.json"
+probe "a train member whose review says not OK holds the train" "$M" block
+cp "$T/pr-7.json" "$T/pr-8.json"
+probe "control: the same train with both members OK" "$M" allow
+rm -f "$T/pr-7.json" "$T/pr-8.json"
 # Gaps (2026-11-15): a review without it counts only when it was posted before GAPS_FROM
 printf '%s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$OLD" "$B" > "$T/c-nogaps.md"
 pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/c-nogaps.md")@2026-11-15T10:00:00Z"
