@@ -245,8 +245,14 @@ def main() -> int:
         stub = ghb / "gh-stub.py"
         stub.write_text(
             "import json, sys\n"
+            "if sys.argv[1:3] == ['pr', 'list']:\n"
+            "    print(json.dumps([{'number': 8}] if 'train/release-2-1-7-merged' in sys.argv else [])); sys.exit(0)\n"
             "n = sys.argv[3]\n"
             "repo = sys.argv[5] if len(sys.argv) > 5 else ''\n"
+            "if sys.argv[1] == 'api' and (sys.argv[2].endswith('.') or 'merged' in sys.argv[2]):\n"
+            "    print('Not Found (HTTP 404)', file=sys.stderr); sys.exit(1)\n"
+            "if 'files' in sys.argv and n == '9':\n"
+            "    print('could not connect', file=sys.stderr); sys.exit(1)\n"
             "if sys.argv[1] == 'api':\n"
             "    rel = 'release-2-1-7' in sys.argv[2] or 'f46f083' in sys.argv[2]\n"
             "    print(json.dumps({'s': 'ahead', 'f': ['CHANGELOG.md', '.claude-plugin/plugin.json'] if rel else ['helpers/x.cjs']})); sys.exit(0)\n"
@@ -382,6 +388,21 @@ def main() -> int:
                     r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
                              *extra, me="alex-mac", brain=cip)
                     check(f"hand check: {label}", r.returncode == want, r.stdout + r.stderr)
+                # content review of #662 (2026-11-25): the sentence's full stop, a merged (deleted) release branch, and
+                # an unreadable lookup that was refused as if measured
+                for title, body, want, text, label in (
+                    ("Release branch at sentence end", "Please run every fixture suite on Windows at train/release-2-1-7-c.",
+                     0, "", "a release branch at the end of a sentence is read without the full stop"),
+                    ("Merged release branch", "Please run every fixture suite on Windows at train/release-2-1-7-merged.",
+                     0, "", "a merged (deleted) release branch is judged through its PR"),
+                    ("Unreadable release PR", "Please run the fixtures on Windows at the head of #9.",
+                     2, "could not read o/core#9", "an unreadable head is refused as unread, not as 'no release commit'"),
+                    ("Train head wording", "Please run the fixtures on Windows at the head of #7.",
+                     2, "o/core#7 carries no release commit", "control: a read train head keeps the measured wording"),
+                ):
+                    r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
+                             me="alex-mac", brain=cip)
+                    check(f"hand check: {label}", r.returncode == want and text in r.stdout, r.stdout + r.stderr)
             finally:
                 shutil.rmtree(cip, True)
         finally:
