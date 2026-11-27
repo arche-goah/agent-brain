@@ -12,6 +12,8 @@
 # (2026-10-11): a request to the human in the reply without a waiter in the turn must block; a
 # Monitor or background waiter, a visible "⚙ no watcher:" line, past tense and a quoted request
 # must not. GitHub side: a ticket or a question in a thread without a repo watch must block.
+# Report ask (2026-11-27): "tell me when X" in a turn without any read must block; after a read and with a
+# waiter it must not. Case selection: --only / --skip run exactly the named cases, an unknown name is said.
 # Usage: bash scripts/test-watch-gate.sh (exit 0 = pass)
 set -u
 T="$(mktemp -d)"
@@ -54,11 +56,15 @@ tool() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","n
 asst() { printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "$1")"; }
 PUSH="cd ~/Projects/brain-shared-memory && git commit -q -m x && git push -q"
 
-check() { # $1 name, $2 transcript, $3 block|allow, $4 project root, [$5 stop_hook_active]; $SID = session id
+GA=()
+gate() { # $1 transcript, $2 project root, [$3 stop_hook_active]; $SID = session id, GA = gate argv (array)
+  printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"%s}' "$(native "$1")" "${3:-false}" "${SID:-}" "${XP:-}" \
+    | CLAUDE_PROJECT_DIR="$(native "$2")" SHARED_MEMORY_REPO="$(native "$SM")" SHARED_MEMORY_SELF="ws" \
+      node "$G" ${GA[@]+"${GA[@]}"} 2>&1   # OS-22: an empty array under set -u
+}
+check() { # $1 name, $2 transcript, $3 block|allow, $4 project root, [$5 stop_hook_active]
   local out
-  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"%s}' "$(native "$2")" "${5:-false}" "${SID:-}" "${XP:-}" \
-    | CLAUDE_PROJECT_DIR="$(native "$4")" SHARED_MEMORY_REPO="$(native "$SM")" SHARED_MEMORY_SELF="ws" \
-      node "$G" 2>&1)"
+  out="$(gate "$2" "$4" "${5:-false}")"
   if [ "$3" = block ]; then
     case "$out" in *'"decision":"block"'*) ok "$1 blocks";; *) bad "$1 did not block: '$out'";; esac
   else
@@ -361,6 +367,50 @@ mkdir -p "$R/.claude/rules"; printf '{"hand_step_patterns":["\\\\bzzhandzz\\\\b"
 check "instance hand-step pattern extends the built-ins" "$T/h8.jsonl" block "$R"
 rm -f "$R/.claude/rules/watch-gate.json"
 
+# --- (e2) a state asked of the human that the turn never read (measured 2026-11-27: "tell me when the
+# board is on USB" while it was already enumerated; the waiter armed afterwards found it after 0 s)
+{ user "flash it"; asst "Tell me when the board is on USB."; } > "$T/ra1.jsonl"
+check "(e2) report ask, no tool call at all" "$T/ra1.jsonl" block "$R"
+case "$(gate "$T/ra1.jsonl" "$R")" in *"never measured"*) ok "(e2) the finding names the missing read";; *) bad "(e2) finding text";; esac
+{ user "flash it"; tool ScheduleWakeup ""; asst "Let me know once the board is on USB."; } > "$T/ra5.jsonl"
+check "(e2) report ask, only a wakeup (a waiter that reads nothing)" "$T/ra5.jsonl" block "$R"
+{ user "flash it"; tool Bash "ls /dev/cu.*"; tool Monitor "bash scripts/wait-usb.sh"; asst "Tell me when the board is on USB."; } > "$T/ra3.jsonl"
+check "(e2) report ask after a read, waiter armed" "$T/ra3.jsonl" allow "$R"
+{ user "flash it"; tool mcp__dev__devices ""; tool ScheduleWakeup ""; asst "Tell me when the board is on USB."; } > "$T/ra4.jsonl"
+check "(e2) report ask after an MCP read, wakeup armed" "$T/ra4.jsonl" allow "$R"
+{ user "flash it"; tool Bash "ls /dev/cu.*"; asst "Tell me when the board is on USB."; } > "$T/ra2.jsonl"
+case "$(gate "$T/ra2.jsonl" "$R")" in *"no waiter runs"*) ok "(e2) read but no waiter: held as a hand step";; *) bad "(e2) read without waiter not held as a hand step";; esac
+{ user "flash it"; asst "Tell me when the router is up. ⚙ no watcher: office network, no probe allowed from here."; } > "$T/ra6.jsonl"
+check "(e2) report ask with a no-watcher line" "$T/ra6.jsonl" allow "$R"
+{ user "which one?"; asst "Let me know if you prefer the short or the long form."; } > "$T/ra7.jsonl"
+check "(e2) a preference question is no report ask" "$T/ra7.jsonl" allow "$R"
+{ user "flash it"; tool ScheduleWakeup ""; asst "Sag Bescheid, wenn das Board am USB haengt."; } > "$T/ra8.jsonl"
+check "(e2) instance wording without its data: built-ins only" "$T/ra8.jsonl" allow "$R"
+mkdir -p "$R/.claude/rules"; printf '{"report_ask_patterns":["\\\\bsag\\\\s+bescheid\\\\b"]}\n' > "$R/.claude/rules/watch-gate.json"
+check "(e2) instance report_ask_patterns extend the built-ins" "$T/ra8.jsonl" block "$R"
+rm -f "$R/.claude/rules/watch-gate.json"
+
+# --- case selection (2026-11-27: the gate ran as a recorder because 140 of 148 hits were the standing
+# watch; the 4 hand-step hits drowned). One row blocks on some cases, a second row records the rest.
+mkdir -p "$T/sel/.claude/rules"
+printf '{"shared_memory": {"repo": "~/x", "interval": 120}, "repo_watches": []}\n' > "$T/sel/.claude/rules/collab-watch.json"
+{ user "check the desk"; tool Bash "git status"; asst "Please start onPC and load the show."; } > "$T/sel1.jsonl"
+{ user "wie ist der stand"; asst "Alles gruen."; } > "$T/sel2.jsonl"
+out="$(gate "$T/sel1.jsonl" "$T/sel")"
+case "$out" in *"hand step"*"standing watch"*) ok "no flag: both cases run";; *) bad "no flag: '$out'";; esac
+GA=(--only hand-step,reload); out="$(gate "$T/sel1.jsonl" "$T/sel")"
+case "$out" in *"standing watch"*) bad "--only hand-step,reload let the standing watch through";; *"hand step"*) ok "--only hand-step,reload: the hand step blocks alone";; *) bad "--only: '$out'";; esac
+check "--only hand-step,reload: a standing-watch-only turn passes" "$T/sel2.jsonl" allow "$T/sel"
+check "--only hand-step,reload: the reload case still blocks" "$T/r1.jsonl" block "$R"
+GA=(--skip hand-step,reload); out="$(gate "$T/sel1.jsonl" "$T/sel")"
+case "$out" in *"hand step"*) bad "--skip hand-step,reload let the hand step through";; *"standing watch"*) ok "--skip hand-step,reload: the rest blocks without the hand step";; *) bad "--skip: '$out'";; esac
+check "--skip hand-step,reload: a hand-step-only turn passes" "$T/h1.jsonl" allow "$R"
+check "--skip hand-step,reload: a report ask still blocks (its own case)" "$T/ra1.jsonl" block "$R"
+GA=(--only=hand-step); check "--only=<names> form" "$T/h1.jsonl" block "$R"
+GA=(--only hand-stp); out="$(gate "$T/h1.jsonl" "$R")"
+case "$out" in *'"decision":"block"'*) bad "unknown name: blocked anyway";; *"unknown case name"*"hand-stp"*) ok "unknown case name is said, not dropped";; *) bad "unknown name silent: '$out'";; esac
+GA=()
+
 # --- a ticket or a question posted on GitHub (class 2026-10-11: a ticket opened, covered only by a collab-watch that happened to run)
 { user "file it"; tool Bash "gh issue create -R o/r --title x --body 'the limit'"; asst "Ticket opened."; } > "$T/i1.jsonl"
 check "issue created, no repo watch" "$T/i1.jsonl" block "$R"
@@ -521,7 +571,7 @@ check "WATCH-GAP without a BLOCKED line" "$T/wg3.jsonl" block "$WG"
 check "WATCH-GAP does not cover a hand step" "$T/wg4.jsonl" block "$WG"
 
 G0="$G"; G="$T/stub.cjs"; before=$fail; fail=0
-for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 i1 i2 cs2 cs5 dc1 dc3 dc6 dc7; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
+for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 ra1 ra5 i1 i2 cs2 cs5 dc1 dc3 dc6 dc7; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
 check "stub on g1" "$T/g1.jsonl" block "$SW" >/dev/null
 caught=$fail; G="$G0"; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed every must-block case"
