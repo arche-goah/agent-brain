@@ -37,7 +37,7 @@ LABEL = re.compile(r'^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^
                    r'(?:BLOCKED \(([\w-]+)[,)]|(?!BLOCKED\b)([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())?')
 MARKER_USE = re.compile(r"#\s*([A-Z][A-Z]+(?:-[A-Z]+)+)\b")
 WINDOW = 8
-CACHE_V = "4"
+CACHE_V = "5"
 
 
 def data():
@@ -86,10 +86,29 @@ def strip_lead(t: str, sentences=None) -> str:
     return pre + rest
 
 
+def strip_lead_structural(t: str, sentences=None) -> str:
+    """In a brain that writes sentences, up to three leading lines without a label are dropped when a line after them
+    carries one - the rule of helpers/gate-label.cjs (Windows re-review of #683, 2026-11-27: a hold written with a
+    sentence the operator has since edited or translated read 'a hook' again). Without sentences: unchanged."""
+    ss = SENTENCES if sentences is None else sentences
+    m = LABEL.search(t)
+    if not ss or (m and (m.group(2) or m.group(3))):
+        return t
+    p = LEAD_PRE.match(t)
+    pre = p.group(1) if p else ""
+    ls = t[len(pre):].splitlines()
+    for i in range(1, min(len(ls), 4)):
+        c = pre + "\n".join(ls[i:])
+        mc = LABEL.search(c)
+        if mc and (mc.group(2) or mc.group(3)):
+            return c
+    return t
+
+
 def label_of(t: str, gate=None) -> str:
     """The refusal's label; without one, the hook's file name or number the malfunction form names (Windows review of
     #646: 6 refusals landed as 'a hook')."""
-    t = strip_lead(t)
+    t = strip_lead_structural(strip_lead(t))
     m = LABEL.search(t)
     lab = (next((g for g in m.groups() if g), "") if m else "").strip()
     if not lab and gate is not None:

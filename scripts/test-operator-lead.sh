@@ -106,6 +106,23 @@ m.SENTENCES=m.operator_sentences(sys.argv[3]);print(m.label_of(sys.argv[2]))' "$
 [ "$(ghl "$RAW" "$T/w")" = "MECHANISM CHECK" ] && ok "(1) gate-health: the label behind the sentence" || bad "(1) gate-health with sentence: '$(ghl "$RAW" "$T/w")'"
 [ "$(ghl "$RAW" "$T/none")" = "a hook" ] && ok "(1) control: gate-health without the brain's sentences" || bad "(1) gate-health control: '$(ghl "$RAW" "$T/none")'"
 [ "$(ghl "$RAW" "$T/bom")" = "MECHANISM CHECK" ] && ok "(1)+(4) gate-health reads the BOM file too" || bad "(1) gate-health BOM: '$(ghl "$RAW" "$T/bom")'"
+# (5) the table was edited or translated after the hold was written (Windows re-review of #683, 2026-11-27): the old
+# sentence no longer matches the table; the readers strip it structurally, both ways, also for two leading sentences
+mkdir -p "$T/ed/.claude/rules"
+printf '{"lines":{"MECHANISM CHECK":"Held: this step has a set way, reworded.","STOPPEN-GATE":"Held: ask through the question tool, reworded."}}\n' > "$T/ed/.claude/rules/operator-lines.json"
+[ "$(gl "$RAW" "$T/ed")" = "MECHANISM CHECK" ] && ok "(5) gate-label: an old sentence after a table edit is still taken off" || bad "(5) gate-label edited table: '$(gl "$RAW" "$T/ed")'"
+[ "$(ghl "$RAW" "$T/ed")" = "MECHANISM CHECK" ] && ok "(5) gate-health: an old sentence after a table edit is still taken off" || bad "(5) gate-health edited table: '$(ghl "$RAW" "$T/ed")'"
+RAW2="PreToolUse:Bash hook error: $(printf '%s\n%s\r\nMECHANISM CHECK (agent-brain): a heredoc' "$S2" "$S1")"
+[ "$(gl "$RAW2" "$T/ed")" = "MECHANISM CHECK" ] && ok "(5) gate-label: two old sentences (CRLF) are taken off" || bad "(5) gate-label two old: '$(gl "$RAW2" "$T/ed")'"
+[ "$(ghl "$RAW2" "$T/ed")" = "MECHANISM CHECK" ] && ok "(5) gate-health: two old sentences (CRLF) are taken off" || bad "(5) gate-health two old: '$(ghl "$RAW2" "$T/ed")'"
+RAWT="PreToolUse:Bash hook error: [node \"x/content-review-gate.cjs\"]: $(printf '%s\nBLOCKED (content-review-gate): risk' "$S1")"
+[ "$(gl "$RAWT" "$T/ed")" = "content-review-gate" ] && ok "(5) gate-label: the guard form behind a [node] tag and an old sentence" || bad "(5) guard form edited: '$(gl "$RAWT" "$T/ed")'"
+# controls: a refusal with no label anywhere stays 'a hook'; a label deeper than three lines is not reached
+NOL="PreToolUse:Bash hook error: $(printf '%s\nno label here\nnor here' "$S1")"
+[ "$(gl "$NOL" "$T/ed")" = "a hook" ] && ok "(5) control: no label in any line stays 'a hook'" || bad "(5) control no label: '$(gl "$NOL" "$T/ed")'"
+[ "$(ghl "$NOL" "$T/ed")" = "a hook" ] && ok "(5) control: gate-health, no label in any line" || bad "(5) gate-health control no label: '$(ghl "$NOL" "$T/ed")'"
+DEEP="PreToolUse:Bash hook error: $(printf 'a\nb\nc\nd\nMECHANISM CHECK (agent-brain): x')"
+[ "$(gl "$DEEP" "$T/ed")" = "a hook" ] && ok "(5) control: a label below three leading lines is not taken" || bad "(5) control deep: '$(gl "$DEEP" "$T/ed")'"
 
 echo
 [ "$fail" -eq 0 ] && echo "operator-lead fixtures: ALL passed" || echo "FAILURE"
