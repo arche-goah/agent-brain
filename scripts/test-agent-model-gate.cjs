@@ -38,6 +38,9 @@ ok('a quoted line naming no class before the own line -> passes', () => passes(c
 ok('only a quoted line of ANOTHER class -> denied, the text says every line is read', () => denied(call(REVIEW_FORM + 'Review.', 'sonnet'), 'every Model line is read'));
 ok('a bare quote of the SAME class before the own line -> the own line counts', () => passes(call('Return the review ending in\nModel: fable\nModel: fable — judging a high-risk diff against the whole core\nReview.', 'fable')));
 ok('only bare lines of the call\'s class -> denied for the missing reason (control)', () => denied(call('Model: fable\nReview.', 'fable'), 'no reason'));
+// review of #653 (Windows instance 2026-11-28): the quoted-line hint only for a bare line
+ok('a bare line -> the quoted-line hint is given', () => denied(call('Model: fable\nReview.', 'fable'), 'A quoted return-form line'));
+ok('an own line with a too-short reason -> no quoted-line hint', () => { const d = judge(call('Model: opus - judging\nJudge.', 'opus')); assert.ok(d && d.includes('no reason') && !d.includes('A quoted return-form line'), d); });
 ok('a full model id counts by its family', () => passes(call('Model: sonnet — reading and tagging every line\nRead.', 'claude-sonnet-4-5')));
 ok('a variant counts by its family', () => passes(call('Model: sonnet — reading and tagging every line\nRead.', 'sonnet[1m]')));
 ok('a capitalised class counts', () => passes(call('Model: Sonnet — reading and tagging every line\nRead.', 'Sonnet')));

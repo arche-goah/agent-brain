@@ -81,7 +81,9 @@ function judge(input, out) {
     const quoted = named.every((l) => l.why.length < MIN_WHY) ? `\n${QUOTED}\n  ${form}` : '';
     return `the model line says ${named.map((l) => l.cls).join(', ')}, the call ${called === 'inherit' ? 'sets no model (it inherits the session\'s)' : 'sets model ' + called}. Reason and call say the same thing - change one of them (every Model line is read; the one naming the call's class counts).${quoted}`;
   }
-  if (line.why.length < MIN_WHY) return `the model line gives no reason ("${line.why}"). Say why ${line.cls} fits THIS task: reading and collecting, or judging, verifying, writing.\n${QUOTED}\n  ${form}`;
+  // the quoted-line hint only for a bare line (no reason at all); a reason that is merely too short gets the form alone
+  // (review of #653, Windows instance 2026-11-28: "Model: opus - judging" was told it was a quoted line)
+  if (line.why.length < MIN_WHY) return `the model line gives no reason ("${line.why}"). Say why ${line.cls} fits THIS task: reading and collecting, or judging, verifying, writing.\n${line.why ? '' : `${QUOTED}\n`}  ${form}`;
   if (out) Object.assign(out, { model: line.cls, called: callWord, type: String(ti.subagent_type || 'general-purpose'), why: line.why.slice(0, 300) });
   return null;
 }
