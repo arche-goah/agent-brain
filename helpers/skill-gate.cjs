@@ -55,6 +55,7 @@ const fs = require('fs');
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const os = require('os');
 const path = require('path');
+const { isShell } = require('./shell-tools.cjs');   // Bash AND PowerShell, one list
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const HOME = process.env.SKILL_GATE_HOME || os.homedir();
@@ -95,7 +96,7 @@ function declared(text) {
 // skill held MCP calls only, the Bash probes of the same measurement never loaded it).
 function matches(r, tool, target, command) {
   if (r.tools && r.tools.test(tool) && (!r.paths || (target && r.paths.test(target)))) return true;
-  return !!(r.commands && command && (tool === 'Bash' || tool === 'Monitor') && r.commands.test(command));
+  return !!(r.commands && command && (isShell(tool) || tool === 'Monitor') && r.commands.test(command));
 }
 
 function enabledPlugins() {

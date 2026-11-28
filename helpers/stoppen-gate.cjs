@@ -61,6 +61,7 @@
 const fs = require('fs');
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
+const { isShell } = require('./shell-tools.cjs');   // Bash AND PowerShell, one list
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
 const { isNotification, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
@@ -204,7 +205,7 @@ function isWaiter(b) {
   // The flag arrives as boolean true (Bash) or as the STRING "true" (Agent — measured on
   // Claude Code 2.1.295 transcripts, 5 of 6 calls); a strict === true missed every one.
   const bg = b.input && b.input.run_in_background;
-  return (b.name === 'Bash' || b.name === 'Agent') && (bg === true || bg === 'true');
+  return (isShell(b.name) || b.name === 'Agent') && (bg === true || bg === 'true');
 }
 
 // Since Claude Code 2.1.296 the Agent tool carries no run_in_background flag and ALWAYS runs

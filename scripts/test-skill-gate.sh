@@ -140,6 +140,8 @@ cmdrun() { # tool command transcript
 }
 [ "$(cmdrun Bash 'python3 osc-router.py --listen 9000' empty.jsonl)" = block ] && ok "a Bash command matching load-before-commands needs the skill" || bad "Bash command not gated"
 [ "$(cmdrun Monitor 'bash artnet-probe.sh' empty.jsonl)" = block ] && ok "a Monitor command is gated the same way" || bad "Monitor command not gated"
+# Windows review of #691: the same command through the PowerShell tool (the Windows main shell) loads the skill too
+[ "$(cmdrun PowerShell 'bash artnet-probe.sh' empty.jsonl)" = block ] && ok "a PowerShell command is gated the same way" || bad "PowerShell command not gated"
 [ "$(cmdrun Bash 'python3 osc-router.py --listen 9000' loaded-probe.jsonl)" = allow ] && ok "with the skill loaded the command passes" || bad "loaded skill still blocks"
 [ "$(cmdrun Bash 'ls -la' empty.jsonl)" = allow ] && ok "negative control: an unrelated command passes" || bad "unrelated command blocked"
 [ "$(run "$GATE" mcp__rig__read empty.jsonl)" = block ] && ok "the same skill still gates its MCP tools" || bad "tools rule lost"

@@ -24,6 +24,7 @@
 const fs = require('fs');
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
+const { isShell } = require('./shell-tools.cjs');   // Bash AND PowerShell, one list
 const { invocations, publishedText } = require('./published-text.cjs');
 const { isTranscriptRecord } = require('./turn-kind.cjs');
 
@@ -83,9 +84,9 @@ function readForPr(lines, current, pr, sha, files) {
   if (sha && sha.length >= 7) names.push(new RegExp(`\\b${sha.slice(0, 7)}`));
   let sincePost = false;
   for (const u of toolUses(lines, current)) {
-    const cmd = u.name === 'Bash' ? String((u.input && u.input.command) || '') : '';
+    const cmd = isShell(u.name) ? String((u.input && u.input.command) || '') : '';
     if (!cmd) continue;
-    if (isPost(cmd, false)) { sincePost = false; continue; }
+    if (isPost(cmd, u.name === 'PowerShell')) { sincePost = false; continue; }
     if (!READ_RX.test(cmd)) continue;
     if (names.some((rx) => rx.test(cmd))) return true;
     if ((files || []).some((f) => cmd.includes(f))) sincePost = true;
@@ -113,7 +114,7 @@ function toolUses(lines, current) {
   }
   for (let i = uses.length - 1; i >= 0; i--) {
     const u = uses[i];
-    if (u.name === 'Bash' && String((u.input && u.input.command) || '') === current) { uses.splice(i, 1); break; }
+    if (isShell(u.name) && String((u.input && u.input.command) || '') === current) { uses.splice(i, 1); break; }
   }
   return uses;
 }
@@ -122,8 +123,8 @@ function toolUses(lines, current) {
 function readSincePost(lines, current) {
   let read = false;
   for (const u of toolUses(lines, current)) {
-    const cmd = u.name === 'Bash' ? String((u.input && u.input.command) || '') : '';
-    if (cmd && isPost(cmd, false)) { read = false; continue; }
+    const cmd = isShell(u.name) ? String((u.input && u.input.command) || '') : '';
+    if (cmd && isPost(cmd, u.name === 'PowerShell')) { read = false; continue; }
     if (u.name === 'Read' || (cmd && READ_RX.test(cmd))) read = true;
   }
   return read;

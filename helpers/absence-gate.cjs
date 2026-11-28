@@ -76,6 +76,7 @@ const fs = require('fs');
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const os = require('os');
 const path = require('path');
+const { isShell } = require('./shell-tools.cjs');   // Bash AND PowerShell, one list
 const { segments } = require('./shell-segments.cjs');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
@@ -298,14 +299,14 @@ function analyze(transcriptPath, cwd, unreadableRx) {
       if (b.type === 'text' && b.text) { events.push({ text: b.text }); continue; }
       if (b.type !== 'tool_use' || !b.name) continue;
       const inp = b.input || {};
-      if (b.name === 'Bash' && typeof inp.command === 'string' && LIST_BASH.test(inp.command)) {
+      if (isShell(b.name) && typeof inp.command === 'string' && LIST_BASH.test(inp.command)) {
         listing.set(b.id, inp.command);
       }
       if (b.name === 'Grep' || b.name === 'Glob') {
         events.push({ searched: [inp.path ? resolveFrom(cwd, inp.path) : norm(cwd)] });
       } else if (b.name === 'Read' && inp.file_path) {
         events.push({ searched: [resolveFrom(cwd, inp.file_path)] });
-      } else if (b.name === 'Bash' && typeof inp.command === 'string' && SEARCH_BASH.test(inp.command)) {
+      } else if (isShell(b.name) && typeof inp.command === 'string' && SEARCH_BASH.test(inp.command)) {
         events.push({ searched: bashPaths(inp.command, cwd) });
       } else if (b.name === 'Agent' || b.name === 'Task') {
         events.push({ delegated: true });

@@ -52,6 +52,7 @@
 const fs = require('fs');
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
+const { isShell } = require('./shell-tools.cjs');   // Bash AND PowerShell, one list
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
 const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers } = require('./turn-kind.cjs');
@@ -178,7 +179,7 @@ function analyze(transcriptPath, cfg) {
         if (p && cfg.persistPaths.some((r) => r.test(String(p)))) events.push({ persist: p });
         continue;
       }
-      if (b.name === 'Bash') {
+      if (isShell(b.name)) {
         const c = b.input && b.input.command;
         if (c && cfg.persistBash.some((r) => r.test(String(c)))) events.push({ persist: 'bash' });
       }

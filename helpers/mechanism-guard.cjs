@@ -94,6 +94,7 @@ function stripMessages(cmd) {
 // target "command" (default) = the Bash/Monitor command; target "path" = the file a Write/Edit
 // touches. Instance rules keep their format and may use "target" too.
 const path = require('path');
+const { isShell } = require('./shell-tools.cjs');   // Bash AND PowerShell, one list
 const os = require('os');
 
 // A `|` the shell never runs as a pipe is no command separator for the rules: an escaped `\|`, and a `|`
@@ -436,7 +437,8 @@ process.stdin.on('end', () => {
   }
   // A long run no rule names (2026-10-31, helpers/long-runs.cjs): a script that declares itself
   // `long-run: detached`, or one the operator once had to background by hand. A marker opens it.
-  if (!background && !marker && hinTool === 'Bash') {
+  // PowerShell too (Windows review of #691): long-runs.cjs learns from a PowerShell run, so the hold reads it as well
+  if (!background && !marker && isShell(hinTool)) {
     let lr = null;
     try { lr = require('./long-runs.cjs').longRunScript(stripped, project, transcript, hinCwd); } catch (_) {}
     if (lr) {
