@@ -70,6 +70,19 @@ repo "$R"; frag a "$L
 symptom: bash -c 'python3 {core}/scripts/x.py | wc -l'";                                   check "bash -c is no accepted form" fail "runs without a shell"
 repo "$R"; frag a "$L
 symptom: python3 {core}/scripts/x.py --home \$HOME";                                       check "a variable outside sh -c fails" fail "runs without a shell"
+# Windows re-review of #696 (2026-11-27): a leading `!`, the globs `?` / `[...]` and brace expansion need a shell too
+repo "$R"; frag a "$L
+symptom: ! python3 {core}/scripts/x.py --brain {brain}";                                   check "a leading ! outside sh -c fails" fail "runs without a shell"
+repo "$R"; frag a "$L
+symptom: python3 {core}/scripts/x.py {brain}/log-?.txt";                                    check "a ? glob outside sh -c fails" fail "runs without a shell"
+repo "$R"; frag a "$L
+symptom: python3 {core}/scripts/x.py {brain}/log-[ab].txt";                                 check "a [...] glob outside sh -c fails" fail "runs without a shell"
+repo "$R"; frag a "$L
+symptom: python3 {core}/scripts/x.py a{1,2}";                                               check "brace expansion outside sh -c fails" fail "runs without a shell"
+repo "$R"; frag a "$L
+symptom: sh -c '! python3 {core}/scripts/x.py --brain {brain}'";                            check "a leading ! inside sh -c passes" pass
+repo "$R"; frag a "$L
+symptom: python3 {core}/scripts/x.py --cmp a!=b --brain {brain}";                          check "a ! inside a word passes" pass
 repo "$R"; printf '# Changelog\n\n## 1.0.0 — 2026-01-01\n\n- **old.** (level: writer; higher: design — x; debt: y) <!-- fragment: old-one -->\n' > "$R/CHANGELOG.md"
 frag a "$B (level: design; higher: none; debt: none; settles-debt: old-one)";              check "settles-debt naming a released fragment passes" pass
 repo "$R"; frag a "$B (level: design; higher: none; debt: none)"; frag b "$B";              check "every fragment of a PR is checked" fail "b.md"

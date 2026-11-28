@@ -164,9 +164,13 @@ function check(root, only) {
     // starts WSL's bash on Windows, OS-14, so it is no accepted form). Limit named in the fragment: on Windows the
     // `sh -c` form itself does not measure yet (python3 is the Store stub inside sh, `{core}` with a backslash path).
     const SH_FORM = /^sh\s+-c\s+(?:'[^']*'|"(?:[^"\\]|\\.)*")$/;
+    // Shell syntax = operators, variables, `~`, the globs `*` `?` `[`, a word-leading `!` (negation; without a shell
+    // it becomes argv[0]) and brace expansion with a comma (`a{1,2}`; the `{core}` placeholders carry no comma).
+    // Windows re-review of #696, 2026-11-27: `!`, `?`, `[` and `a{1,2}` passed although shlex cannot run them.
+    const SHELL_SYNTAX = /[|&;<>$~*?[`]|(?:^|\s)!|\{[^}\s]*,[^}]*\}/;
     for (const m of raw.matchAll(SYMPTOM)) {
       const c = m[1].trim();
-      if (/[|&;<>$~*]|`/.test(c) && !SH_FORM.test(c)) {
+      if (SHELL_SYNTAX.test(c) && !SH_FORM.test(c)) {
         findings.push(`${name}: symptom: "${c.slice(0, 80)}" uses shell syntax but runs without a shell - write the whole line as sh -c '...'`);
       }
     }
