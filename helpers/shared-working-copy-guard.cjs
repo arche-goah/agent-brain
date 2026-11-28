@@ -122,6 +122,27 @@ function gitDir(repo) {
   return path.isAbsolute(d) ? d : path.join(repo, d);
 }
 
+// A run that reads this checkout marks it busy in its own git dir (scripts/busy-tree.sh: core-push-lint, core-merge-lint).
+// Measured 2026-11-23 on the macOS instance: a branch switch in a core clone while a detached push lint ran there; the lint
+// stamped the SHA, not the tree it read. The first form read the process list (#649) and never fired on Windows (no `ps`
+// for node, four spellings of one path - Windows review 2026-11-24); the mark needs neither. A mark older than two hours
+// is a run killed hard and counts no more.
+const BUSY_MAX_MS = 2 * 60 * 60 * 1000;
+function busyMarks(gd) {
+  const dir = path.join(gd, 'agent-busy');
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch (_) { return []; }
+  const out = [];
+  for (const n of names) {
+    const f = path.join(dir, n);
+    try {
+      if (Date.now() - fs.statSync(f).mtimeMs > BUSY_MAX_MS) continue;
+      out.push({ file: f, what: fs.readFileSync(f, 'utf8').trim() || n });
+    } catch (_) {}
+  }
+  return out;
+}
+
 function topLevel(repo) {
   const r = spawnSync('git', ['-C', repo, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', timeout: 5000 });
   return r.status === 0 ? (r.stdout || '').trim() : null;
@@ -269,10 +290,14 @@ process.stdin.on('end', () => {
   const cmd = (data.tool_input && data.tool_input.command) || '';
   if (!/\bgit\b/.test(cmd)) process.exit(0);
   const project = process.env.CLAUDE_PROJECT_DIR || data.cwd || '.';
+  // A call without -C runs where the SHELL stands (the hook's cwd), not in the project dir: a session that cd-ed
+  // into a clone in an earlier command runs a bare `git switch` there (Windows review of #692: such a call passed in
+  // a marked checkout). The project dir stays the place of the log.
+  const shellCwd = data.cwd || project;
   const sid = String(data.session_id || '');
   const marker = /MECHANISM-OK:/.test(cmd);
   let calls;
-  try { calls = gitCalls(cmd, project); } catch (_) { process.exit(0); }
+  try { calls = gitCalls(cmd, shellCwd); } catch (_) { process.exit(0); }
   if (!calls.length) process.exit(0);
 
   // Sessions on this machine, this one included — counted once, only when a call needs it.
@@ -311,6 +336,41 @@ process.stdin.on('end', () => {
     }
 
     const verdict = judge(call);
+    // Every call that rewrites the tree files (class sweep 2026-11-23, widened by the Windows review 2026-11-24): a
+    // branch switch, stash, reset --hard/--merge/--keep, rebase, merge, pull (fast-forward included), cherry-pick,
+    // revert, am, a file-level checkout or restore, clean -f. A new branch on the same commit (`-b`, `-c`) changes no file.
+    // only on the SAME commit: a start point after the branch name moves the files (Windows review of #692, gap 2)
+    // A `--create=<n>` / `--force-create=<n>` token carries the branch name itself, so it counts as one positional
+    // (Windows review of #692, round two: `switch --create=n other` passed on the start point alone).
+    const inlineName = call.args.some((a) => /^--(?:force-)?create=/.test(a)) ? 1 : 0;
+    const newBranch = ((call.sub === 'checkout' && hasOpt(call.args, '-b', '-B')) || (call.sub === 'switch' && hasOpt(call.args, '-c', '-C', '--create', '--force-create')))
+      && call.args.filter((a) => !a.startsWith('-')).length + inlineName <= 1;
+    // A forced checkout or switch throws local changes away even on the same commit and without a positional.
+    const discards = ['checkout', 'switch'].includes(call.sub) && hasOpt(call.args, '-f', '--force', '--discard-changes');
+    const treeMoving = discards || !newBranch && (
+      (verdict && /moves HEAD|removes|discards/i.test(verdict.was))
+      || ['rebase', 'merge', 'pull', 'cherry-pick', 'revert', 'am'].includes(call.sub)
+      || (call.sub === 'reset' && hasOpt(call.args, '--hard', '--merge', '--keep'))
+      || (call.sub === 'checkout' && call.args.filter((a) => !a.startsWith('-')).length > 0)
+      || (call.sub === 'restore' && (!hasOpt(call.args, '--staged', '-S') || hasOpt(call.args, '--worktree', '-W')))   // gap 1
+      || (call.sub === 'clean' && call.args.some((a) => /^-[a-zA-Z]*f/.test(a) || a === '--force')));   // gap 4: -Xdf
+    // `worktree remove` deletes ANOTHER checkout's files: its own git dir holds the mark, not the caller's.
+    let busyGd = treeMoving ? gd : null;
+    const wpos = call.args.filter((a) => !a.startsWith('-'));
+    if (call.sub === 'worktree' && wpos[0] === 'remove' && wpos[1]) {
+      const target = path.resolve(top, fromShellPath(wpos[1]));
+      busyGd = fs.existsSync(target) ? gitDir(target) : null;
+    }
+    if (busyGd && !marker) {
+      const busy = busyMarks(busyGd);
+      if (busy.length) {
+        deny(`WORKTREE BUSY (${top}): a run that reads this checkout is still going: ${busy[0].what}` +
+          (busy.length > 1 ? ` (+${busy.length - 1} more)` : '') +
+          `\n\n  \`git ${call.sub}\` rewrites files under a run that is still reading the tree.\n\nThe form that passes:\n` +
+          `  a \`git worktree add <scratchpad>/<name> <branch>\` for the other work, or wait until the run has ended\n\n` +
+          `A run killed hard leaves its mark behind (${busy[0].file}): delete it, or repeat with "# MECHANISM-OK: <why>".`, project, cmd);
+      }
+    }
     // One session, but the copy holds uncommitted work that is not ours to move (measured 2026-11-03 on the macOS
     // instance: `git switch -c` in the operator's project checkout over their uncommitted settings and profiles —
     // core rule #12 puts branch work into a scratchpad worktree always, the guard only held with a second session).

@@ -87,7 +87,10 @@
     by hand is a finding against this rule: the command joins the `foreground_only` rules
     of `mechanism-rules.json` (core or suite) with its measured duration. Not detached: a
     command whose result the very next step needs and that ends within seconds, and the
-    operator's own hand steps (a dialog, an interactive login).
+    operator's own hand steps (a dialog, an interactive login). **A detached run that reads
+    a checkout marks it busy** (2026-11-23): while the mark stands, nothing rewrites that
+    tree's files — other work goes into its own worktree. Carriers `core/scripts/busy-tree.sh`
+    (the push and merge lints mark), `core/helpers/shared-working-copy-guard.cjs` (holds).
 
 History: core/docs/rule-history.md, "Working Rules".
 

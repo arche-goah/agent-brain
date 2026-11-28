@@ -55,10 +55,10 @@ PRIVW_N=$(native "$PRIVW"); LOOK_N=$(native "$LOOK")
 
 # $1 name, $2 sessions fixture ("cwd1;cwd2" or ""), $3 command, $4 block|allow, [$5 session id]
 probe() {
-  local out rc sid="${5:-sess-A}"
+  local out rc sid="${5:-sess-A}" cwd="${6:-$REPO_N}"   # $6: the shell's cwd (default: the main checkout)
   # JSON built by node from argv (a printf-built input broke on a bare double quote, 2026-11-02); the probes keep
   # writing \" and \n as JSON escapes, unesc() turns them into the characters.
-  out=$(node -e 'const a=process.argv;const unesc=(s)=>s.replace(/\\(["\\\/nt])/g,(m,c)=>c==="n"?"\n":c==="t"?"\t":c);process.stdout.write(JSON.stringify({tool_name:"Bash",session_id:a[1],cwd:a[2],tool_input:{command:unesc(a[3])}}))' "$sid" "$REPO_N" "$3" \
+  out=$(node -e 'const a=process.argv;const unesc=(s)=>s.replace(/\\(["\\\/nt])/g,(m,c)=>c==="n"?"\n":c==="t"?"\t":c);process.stdout.write(JSON.stringify({tool_name:"Bash",session_id:a[1],cwd:a[2],tool_input:{command:unesc(a[3])}}))' "$sid" "$cwd" "$3" \
         | SHARED_COPY_FIXTURE_SESSIONS="$2" CLAUDE_PROJECT_DIR="$TMP_N" node "$HELPER" 2>&1)
   rc=$?
   if printf '%s' "$out" | grep -q '"permissionDecision": *"deny"'; then
@@ -160,6 +160,60 @@ probe "marker opens it"                "$ONE" "git -C $REPO_N switch -c over-wor
 printf 'x\n' > "$PRIV/scratch.txt"
 probe "own scratchpad worktree, dirty" "$ONE" "git -C $PRIV_N switch -c in-scratch"                    allow
 git -C "$REPO" checkout -q -- a.txt; rm -f "$REPO/untracked.txt" "$PRIV/scratch.txt"
+
+echo "busy tree (a run marked the checkout it reads, scripts/busy-tree.sh):"
+# The incident (2026-11-23): a branch switch in a clone while a detached push lint read it. One session, own
+# scratchpad worktree - no other rule of the guard holds there, so only the mark can.
+BUSY_SH=$(resolve scripts/busy-tree.sh) || BUSY_SH=""
+if [ -n "$BUSY_SH" ]; then
+  (
+    # the caller's own trap clears the mark, as in core-push-lint.sh (`trap '…; busy_tree_clear' EXIT`)
+    . "$BUSY_SH"; trap 'touch "$TMP/caller-trap-ran"; busy_tree_clear' EXIT; busy_tree_mark "$PRIV" "core-push-lint fixture"
+    probe "the incident: switch under a running lint"   "$ONE" "git -C $PRIV_N switch fixture-lookalike"       block
+    probe "reset --hard under the run"                  "$ONE" "git -C $PRIV_N reset --hard"                   block
+    probe "pull --ff-only under the run"                "$ONE" "git -C $PRIV_N pull --ff-only"                 block
+    probe "file-level checkout under the run"           "$ONE" "git -C $PRIV_N checkout -- a.txt"              block
+    probe "restore . under the run"                     "$ONE" "git -C $PRIV_N restore ."                      block
+    probe "clean -fd under the run"                     "$ONE" "git -C $PRIV_N clean -fd"                      block
+    probe "restore --staged changes no file"            "$ONE" "git -C $PRIV_N restore --staged a.txt"         allow
+    probe "a new branch on the same commit (switch -c)" "$ONE" "git -C $PRIV_N switch -c side"                 allow
+    # Windows review of #692, gaps 1, 2, 4: --worktree undoes the --staged exemption, a start point moves the files, -X before f
+    probe "restore --staged --worktree rewrites files"  "$ONE" "git -C $PRIV_N restore --staged --worktree a.txt" block
+    probe "a new branch on ANOTHER start point (switch -c n other)" "$ONE" "git -C $PRIV_N switch -c side fixture-lookalike" block
+    probe "a new branch on another start point (checkout -b n other)" "$ONE" "git -C $PRIV_N checkout -b side fixture-lookalike" block
+    probe "clean -Xdf under the run"                    "$ONE" "git -C $PRIV_N clean -Xdf"                     block
+    # Windows review of #692, round two (2026-11-27): the branch name inside the option token, the start point the one positional
+    probe "a new branch on another start point (switch --create=n other)" "$ONE" "git -C $PRIV_N switch --create=side fixture-lookalike" block
+    probe "the same with --force-create=n other"        "$ONE" "git -C $PRIV_N switch --force-create=side fixture-lookalike" block
+    probe "a new branch on the same commit (switch --create=n)" "$ONE" "git -C $PRIV_N switch --create=side"   allow
+    # named follow-ups taken into the train: a forced checkout discards files without a positional; a marked
+    # worktree removed from another checkout loses its files under the run
+    probe "checkout -f under the run"                   "$ONE" "git -C $PRIV_N checkout -f"                    block
+    probe "switch -c n --discard-changes under the run" "$ONE" "git -C $PRIV_N switch -c side --discard-changes" block
+    probe "worktree remove of the marked worktree from the main checkout" "$ONE" "git -C $REPO_N worktree remove --force $PRIV_N" block
+    # Windows review of #692, round one (reader gap, taken into the train 2026-11-28): the shell cd-ed into the marked
+    # checkout in an earlier command, the call has no -C; the project dir is elsewhere
+    probe "a bare switch where the shell stands in the marked checkout" "$ONE" "git switch fixture-lookalike" block sess-A "$PRIV_N"
+    probe "a bare status there still passes"             "$ONE" "git status --short" allow sess-A "$PRIV_N"
+    probe "worktree remove of an unmarked worktree"     "$ONE" "git -C $REPO_N worktree remove --force $(native "$PRIVW")-absent" allow
+    probe "commit by path under the run"                "$ONE" "git -C $PRIV_N commit a.txt -m x"              allow
+    probe "marker opens it"                             "$ONE" "git -C $PRIV_N switch fixture-lookalike  # MECHANISM-OK: fixture" allow
+    probe "the sibling worktree is not busy"            "$ONE" "git -C $(native "$PRIVW") switch fixture-lookalike" allow
+    touch -t 202601010000 "$BUSY_TREE_FILE"
+    probe "a mark older than two hours counts no more"  "$ONE" "git -C $PRIV_N switch fixture-lookalike"       allow
+    touch "$BUSY_TREE_FILE"
+  )
+  marks=$(ls "$(git -C "$PRIV" rev-parse --absolute-git-dir)/agent-busy" 2>/dev/null | wc -l | tr -d ' ')
+  [ "$marks" = 0 ] && ok "the mark is gone when the run exits" || bad "a mark is left after the run: $marks"
+  probe "after the run: the switch passes"              "$ONE" "git -C $PRIV_N switch fixture-lookalike"       allow
+  [ -f "$TMP/caller-trap-ran" ] && ok "the caller's EXIT trap ran (busy-tree sets no trap of its own)" || bad "the caller's EXIT trap did not run"
+  # both lint scripts put busy_tree_clear into their EXIT trap
+  for s in core-push-lint.sh core-merge-lint.sh; do
+    f=$(resolve "scripts/$s") && grep -q "trap .*busy_tree_clear.* EXIT" "$f" && ok "$s clears its mark on exit" || bad "$s: no busy_tree_clear in its EXIT trap"
+  done
+else
+  echo "  --  scripts/busy-tree.sh not in this layout"
+fi
 
 echo "fail-open:"
 probe "not a git repo"               "$TWO" "git -C $TMP_N/nowhere commit -m x"                     allow
