@@ -29,7 +29,7 @@
     { "id": "people", "label": "relationships with people (collaborators, clients, venues)" },
     { "id": "deferred", "label": "topics the operator deferred in their own words" }
   ],
-  "_comment_retired": "Ids the core took out of this list. A brain's own copy keeps them until someone deletes them, and its AI goes on asking the operator about that matter; scripts/decision-readiness.py names such an id at every session start.",
+  "_comment_retired": "Read from the CORE template only - in a brain's own copy this block is inert and says nothing about that brain. Ids the core took out of the list: a copy that still carries one is named by scripts/decision-readiness.py at every session start, until the entry is deleted or carries \"operator_word\": \"<the operator's words> (<date>)\".",
   "retired": [
     { "id": "core-new", "since": "2026-11-25", "why": "new core functionality is a normal PR, the review decides (rules/working-rules.md #11)" }
   ]
