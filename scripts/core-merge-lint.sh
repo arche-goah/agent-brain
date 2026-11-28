@@ -58,17 +58,13 @@ summary="$(printf '%s\n' "$out" | grep -a 'ci-lint-local:' | tail -1)"
 
 # The neighbours' fixtures on the merged state: ci-lint-local runs the lint jobs only; the fixtures live in the
 # portability job. Every fixture that names a file the PR touches (or is touched itself) runs here.
+# One rule with core-push-lint.sh --fast (scripts/reader-fixtures.sh): the base name, deletes and the old name of a
+# rename included (until 2026-11-28 a stem match of its own here, floor 4 characters).
+. "$HERE/reader-fixtures.sh"
 fixtures=()
 while IFS= read -r f; do
-  [ -n "$f" ] || continue
-  base="$(basename "$f")"; stem="${base%.*}"
-  # a stem under 4 characters matches as a substring everywhere ("ci" of ci.yml pulled 74 fixtures, 2026-10-31)
-  [ "${#stem}" -ge 4 ] || continue
-  for t in "$CLONE"/scripts/test-*.sh "$CLONE"/scripts/*-test.sh "$CLONE"/scripts/*-test.py "$CLONE"/scripts/test-*.cjs; do
-    [ -f "$t" ] || continue
-    if [ "scripts/$(basename "$t")" = "$f" ] || grep -aqF "$stem" "$t"; then fixtures+=("$t"); fi
-  done
-done < <(git -C "$CLONE" diff --name-only "$main...$head")
+  [ -n "$f" ] && fixtures+=("$CLONE/$f")
+done < <(reader_fixtures "$CLONE" "$main...$head")
 fx_fail=0; fx_n=0
 # read line by line, not `for t in $(…)`: the clone path can hold a space (a Windows profile name, OS-10)
 while IFS= read -r t; do
