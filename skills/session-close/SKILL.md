@@ -239,19 +239,29 @@ then an explicit release follows.
      changes go to suite repos next to the brain; a suite patch left uncommitted passes a
      close that only looked at the brain's tree (coherence-scan 2026-09-18). For each
      `FAIL neighbour repo` / `FAIL shared-memory` line from step 2: commit and push under
-     that repo's own rules, or name it in the close report with a reason. Another
-     session's work counts as a reason only while that session is alive
-     (`core/scripts/parallel-sessions.sh` lists it) — say which one; a session that has
-     closed left its work to this brain, and this close commits it by path like its own.
-     Files of several sessions mixed in one tree are no reason either: commit by path
-     (working rule #12). Whatever of this session's own work still stays uncommitted —
-     a repo whose rules forbid a push to main, a PR not ready — is at least committed to
-     a branch and pushed before the release, so it never lives on one disk only
-     (measured 2026-11-28 on one instance: a lab repo's work of three days stood only in
-     the working copy after a close that named "files of other sessions" as its reason;
-     the same repo held a second such deferral from 17 days earlier). A repo this session
-     wrote to that `config/ecosystem.json` does not list is checked by hand (`git status`)
-     and named.
+     that repo's own rules, or name it in the close report with a reason. The goal the
+     report answers for every such repo: **no work of this session lives on one disk
+     only** (measured 2026-11-28 on one instance: a lab repo's work of three days stood
+     only in the working copy after a close that named "files of other sessions" as its
+     reason; the same repo held a second such deferral from 17 days earlier).
+     - **Another session's work** is a reason only when that session may be alive. Ask
+       `bash core/scripts/parallel-sessions.sh <that repo's path>`: exit 0 (at most this
+       session sits in that repo), or the peer's own close in the session log, shows it
+       gone - its leftovers are then this brain's, committed by path like the own. Exit 1
+       without repo-exact lines (the Windows form counts machine-wide only) or exit 2 means
+       "peer status not measurable": treat the peer as alive, commit none of its paths, and
+       name them in the report as such. Files of several sessions mixed in one tree are no reason
+       by themselves: commit by path (working rule #12).
+     - **This session's own work that stays uncommitted** on the repo's main line (a repo
+       that takes only PRs, a PR not ready) goes to a backup branch without touching the
+       shared working copy - no switch, no stash, no reset (working rule #12): a worktree
+       under the scratchpad (`git worktree add <scratch>/wip <base>`), this session's paths
+       copied in, committed there and pushed as `wip/<date>-<topic>`. The push follows the
+       instance's push rule: where that rule gates it, the close asks the same question
+       as above and names the branch it would push. Secrets, `.env` and paths the instance
+       keeps local never go into it.
+     A repo this session wrote to that `config/ecosystem.json` does not list is checked by
+     hand (`git status`) and named.
      **A closing session starts no watch it cannot see through.** A push here is a commit
      reaching its remote; it does not open new duties. Where a push would expect a reaction
      — a new PR whose CI has to be read, a shared-memory request awaiting an answer — the
