@@ -188,9 +188,14 @@ function recent(s, now) {
 
 /** Does a claim meet a written area? A claim on a FILE meets only that file written (measured 2026-11-20: two
  *  claims on different files of one folder were reported as an overlap on every write, the folder being the
- *  only thing compared); a claim on a folder meets every area inside it or containing it. */
+ *  only thing compared); a claim on a folder meets every area inside it or containing it. A write whose last time
+ *  (`v.at`) is older than the claim (`c.at`) does not meet it (measured 2026-11-28, macOS instance: the OVERLAP line
+ *  "claimed by A, written by B" came back on every re-arm although B's last write into the folder was older than A's
+ *  claim - only the paths were compared). A claim or write without a readable time keeps the path rule. */
 function claimMeets(c, area, v, intoOnly) {
   if (v.root === area) return false;   // a write known only as a repo root is no evidence against a claim
+  const claimed = Date.parse(c.at || ''); const wrote = Date.parse(v.at || '');
+  if (!Number.isNaN(claimed) && !Number.isNaN(wrote) && wrote < claimed) return false;
   if (c.file) return (v.files || []).includes(c.path);
   return inside(area, c.path) || (!intoOnly && inside(c.path, area));
 }

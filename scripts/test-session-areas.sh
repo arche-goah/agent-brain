@@ -181,6 +181,28 @@ ed3 t-6 "$B3/fc/z.md" >/dev/null
 [ -d "$L6" ] && ok "a 5 s old lock is not stale" || bad "a 5 s old lock was taken over"
 rm -rf "$L6"
 
+# 2026-11-28 (macOS instance, two sessions): "claimed by A, written by B" came back on every re-arm although B's last
+# write into the folder was older than A's claim - only the paths were compared. A write older than the claim does
+# not meet it, in both directions and in the talked branch too; a write after the claim still does.
+B4="$(native "$T/brain4")"; mkdir -p "$T/brain4/.git" "$T/brain4/work" "$T/brain4/shared"
+printf '{"pid":401,"sessionId":"v-1","cwd":"%s","name":"brain-v1"}' "$B4" > "$T/cfg/sessions/401.json"
+printf '{"pid":402,"sessionId":"v-2","cwd":"%s","name":"brain-v2"}' "$B4" > "$T/cfg/sessions/402.json"
+V4() { CLAUDE_PROJECT_DIR="$B4" SESSION_AREAS_ALIVE="401,402" "$@"; }
+ed4() { printf '{"session_id":"%s","cwd":"%s","tool_name":"Edit","tool_input":{"file_path":"%s"},"transcript_path":"%s"}' "$1" "$B4" "$2" "${3:-}" | V4 node "$G" record 2>&1; }
+ed4 v-1 "$B4/work/a.md" >/dev/null
+ed4 v-1 "$B4/shared/a.md" >/dev/null
+V4 node "$G" claim "$B4/work" --note "rework" --session v-2 >/dev/null
+out=$(CLAUDE_CODE_SESSION_ID= V4 node "$G" overlaps); lacks "a write older than the claim is no overlap with it (the re-arm list)" "$out" "claimed by brain-v2"
+out=$(V4 node "$G" show --session v-1); lacks "... nor for the writer (the peer's claim)" "$out" "claimed by brain-v2"
+out=$(V4 node "$G" show --session v-2); lacks "... nor for the claimant (its own claim)" "$out" "written by brain-v1"
+printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"m1","name":"SendMessage","input":{"to":"brain-v1","message":"x"}}]}}\n' > "$T/v2.jsonl"
+out=$(ed4 v-2 "$B4/shared/b.md" "$(native "$T/v2.jsonl")"); lacks "talked branch: a write older than the own claim is no overlap" "$out" "claimed by brain-v2"
+# Negative control (before any newer write): the helper without the time rule (a mutated copy) reports the stale write.
+sed -e '/if (!Number.isNaN(claimed) \&\& !Number.isNaN(wrote) \&\& wrote < claimed) return false;/d' "$_D/../helpers/session-areas.cjs" > "$T/mut/helpers/session-areas-time.cjs"
+grep -q 'wrote < claimed' "$T/mut/helpers/session-areas-time.cjs" && bad "control: the time mutation did not apply" || ok "control: the mutation removed the time rule"
+out=$(V4 node "$(native "$T/mut/helpers/session-areas-time.cjs")" show --session v-2); has "control: without the time rule the claimant is told of the stale write" "$out" "written by brain-v1"
+out=$(ed4 v-1 "$B4/work/b.md"); has "a write after the claim still meets it" "$out" "claimed by brain-v2 (rework)"
+
 SESSION_AREAS_ALIVE="102" node "$G" show --session s-b >/dev/null
 [ ! -f "$T/brain/.claude-state/session-areas/s-a.json" ] && ok "a dead peer's record is deleted" || bad "dead record kept"
 out=$(SESSION_AREAS_ALIVE="102" node "$G" show --session s-b --peers-only); [ -z "$out" ] && ok "no live peer: --peers-only is silent" || bad "peers-only: '$out'"
