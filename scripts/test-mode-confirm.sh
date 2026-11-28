@@ -88,7 +88,8 @@ pend "a later prompt without a mode word keeps the wait" "$f" autonomous
 # answer that NAMES the mode (#654 cause 1), and an on-word in the answer to ANOTHER question opens the wait, it does
 # not switch (#672).
 modeq() { # modeq <id> <question> <answer>: a question-tool call without the mode-confirm header and its answer
-  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":%s,"header":"Mode","options":[{"label":"a"},{"label":"b"}]}]}}]}}\n' "$1" "$(js "$2")"
+  # (the options are real labels: since #654 bf1100f only a CHOSEN option names the mode, never free text)
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":%s,"header":"Mode","options":[{"label":"Autonomous, go on (Recommended)"},{"label":"Stay interactive"}]}]}}]}}\n' "$1" "$(js "$2")"
   printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","content":%s}]}}\n' "$1" "$(js "Your questions have been answered: \"$2\"=\"$3\". You can now continue")"
 }
 f="$T/12.jsonl"; { user "anything open for me?"; modeq q1 "Shall I work through it autonomously or stay interactive?" "Autonomous, go on (Recommended)"; } > "$f"
