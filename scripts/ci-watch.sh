@@ -45,7 +45,7 @@
 #      the run ends, up to CI_WATCH_RUN_CEILING (default 7200 s) after the oldest running
 #      check-run started. Nothing running, nothing readable, or past the ceiling = UNKNOWN.
 #   9. (2026-11-28) An attached watch (point 6) replayed the owner's GREEN for the PREVIOUS head while the
-#      pushed head's runs were queued. A GREEN/RED is taken over only when the sha it was measured for is the
+#      pushed head's runs were queued. A GREEN/RED/UNKNOWN is taken over only when the sha it was measured for is the
 #      PR's head (pr) or the ref's tip (ref) now; otherwise the attached call watches the current one itself.
 # This script matches refs via the run's headBranch FIELD from JSON (works for tags
 # and branches alike), enumerates every terminal state, and cannot end silently:
@@ -112,13 +112,14 @@ if [[ -z "${CI_WATCH_SHARED_CHILD:-}" && "${CI_WATCH_SHARE:-1}" != 0 ]]; then
   replay() { cat "$L/out" 2>/dev/null; cat "$L/err" >&2 2>/dev/null; exit "$(cat "$L/rc")"; }
   # Point 9 (2026-11-28, measured on the macOS instance): a watch armed right after a push attached to a watch
   # another session had started on the same PR earlier and replayed its `GREEN — 14 checks` while the pushed
-  # head's runs were still queued - the owner's verdict was for the PREVIOUS head. A GREEN or RED is taken over
+  # head's runs were still queued - the owner's verdict was for the PREVIOUS head. A GREEN, RED or UNKNOWN is taken over
   # only when the sha it was measured for ($L/sha, written by the owner) is the target's sha now - the PR's head
   # (pr mode) or the commit the ref points at (ref mode: the owner judged the tip it last read, and a ref moves);
   # otherwise (another sha, none recorded, unreadable) this call watches the current one itself.
   verdict_is_current() {   # returns 0 = replay; else it does not return (watches on its own)
     local rc judged head what
-    rc=$(cat "$L/rc"); [[ "$rc" == 0 || "$rc" == 1 ]] || return 0   # UNKNOWN / NO-CI claim neither green nor red
+    # GREEN, RED and UNKNOWN are each about one head or tip; NO-CI (3) is about the repo and is replayed as is
+    rc=$(cat "$L/rc"); [[ "$rc" == 0 || "$rc" == 1 || "$rc" == 2 ]] || return 0
     judged=$(cat "$L/sha" 2>/dev/null)
     if [[ "$MODE" == pr ]]; then
       head=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null); what="PR #$TARGET head"
@@ -162,7 +163,19 @@ last_sha=""
 moves=0
 MOVES_MAX=${CI_WATCH_MOVES_MAX:-5}
 
-fail_unknown() { echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
+# An UNKNOWN is handed on under the same rule as a GREEN or RED (point 9): it names the sha it was reached on -
+# the PR's head or the ref's tip. Read with plain gh, not ghq: an UNKNOWN can come out of ghq itself (a rate-limit
+# ceiling), and a wait there would only delay the exit. Nothing readable = nothing recorded = an attached call
+# watches on its own.
+record_unknown_sha() {
+  [[ -n "${CI_WATCH_VERDICT_SHA_FILE:-}" ]] || return 0
+  local s=""
+  if [[ "$MODE" == pr ]]; then s=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null)
+  else s=${last_sha:-$(gh api "repos/$REPO/commits/$TARGET" --jq .sha 2>/dev/null)}; fi
+  [[ "$s" =~ ^[0-9a-f]{7,40}$ ]] && printf '%s\n' "$s" > "$CI_WATCH_VERDICT_SHA_FILE"
+  return 0
+}
+fail_unknown() { record_unknown_sha; echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
 # Point 9: the sha a GREEN or RED was measured for, for a watch that attaches to this one. $1 = the sha (ref mode:
 # the tip the verdict's runs belong to); none given = the PR's head read now (a pr-mode red is judged on the head
 # the checks above were just read for).
@@ -276,6 +289,7 @@ pr_conflicting_check() {
   if [[ "$m" == "CONFLICTING" ]]; then
     if (( conflict_seen )); then
       echo "CI-WATCH UNKNOWN: $REPO PR #$TARGET is CONFLICTING (two consecutive reads) — either GitHub creates no pull_request run for it at all (zero checks), or the checks you see are GREEN BUT STALE, computed before the base changed. Both mean the same thing: not mergeable, and no re-trigger helps — rebase the branch, then re-arm." >&2
+      record_unknown_sha
       exit 2
     fi
     conflict_seen=1

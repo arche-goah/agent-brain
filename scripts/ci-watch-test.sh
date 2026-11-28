@@ -49,6 +49,12 @@ case "${CI_WATCH_STUB:?}" in
   # call that sees the pushed one. Each caller counts its own calls.
   pr_slow_head) echo x >> "${CI_WATCH_STATE:?}.calls-${STUB_HEAD:?}"; "$REAL_SLEEP" 1
               if [[ "$*" == *headRefOid* ]]; then echo "$STUB_HEAD"; else echo '[{"bucket":"pass"}]'; fi ;;
+  # ...an owner that ends UNKNOWN: on a head starting with 1 (or an unreadable one, STUB_HEAD=none) `pr checks`
+  # never parses; on any other head it is green.
+  pr_slow_unknown) echo x >> "${CI_WATCH_STATE:?}.calls-${STUB_HEAD:?}"; "$REAL_SLEEP" 1
+              if [[ "$*" == *headRefOid* ]]; then [[ "$STUB_HEAD" == none ]] && { echo "HTTP 500 boom" >&2; exit 1; }; echo "$STUB_HEAD"
+              elif [[ "$STUB_HEAD" == 1* || "$STUB_HEAD" == none ]]; then echo 'Checks are being registered'
+              else echo '[{"bucket":"pass"}]'; fi ;;
   # ...and the ref form: the ref's tip is the caller's STUB_HEAD, its one push run is green.
   ref_slow_head) echo x >> "${CI_WATCH_STATE:?}.calls-${STUB_HEAD:?}"; "$REAL_SLEEP" 1
               if [[ "$*" == */commits/* ]]; then echo "$STUB_HEAD"
@@ -642,6 +648,35 @@ if [[ "$rc1" == 0 && "$rc2" == 0 ]] && grep -q "CI-WATCH GREEN" "$TMP/second" &&
   echo "  OK   control: an owner's verdict for the current head is taken over (rc $rc1/$rc2)"
 else
   echo "  FAIL control: same head not taken over: rc $rc1/$rc2"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
+fi
+# ...and an UNKNOWN is handed on under the same rule: reached on another head, or on an unreadable one, it is not
+# replayed - the attached call watches its head itself. $1 = owner's head, $2 = attached call's head.
+shared_unknown() {
+  rm -f "$TMP/state-pr_unk".*
+  CI_WATCH_STUB=pr_slow_unknown STUB_HEAD=$1 CI_WATCH_STATE="$TMP/state-pr_unk" bash "$WATCH" pr owner/repo 81 60 >"$TMP/first" 2>&1 &
+  first=$!
+  "$REAL_SLEEP" 0.3
+  CI_WATCH_STUB=pr_slow_unknown STUB_HEAD=$2 CI_WATCH_STATE="$TMP/state-pr_unk" bash "$WATCH" pr owner/repo 81 60 >"$TMP/second" 2>&1
+  rc2=$?; wait "$first"; rc1=$?
+}
+shared_unknown $OLD_HEAD $NEW_HEAD
+if [[ "$rc1" == 2 && "$rc2" == 0 ]] && grep -q "not taken over" "$TMP/second" && grep -q "measured for $OLD_HEAD" "$TMP/second" \
+   && grep -q "CI-WATCH GREEN" "$TMP/second"; then
+  echo "  OK   an owner's UNKNOWN on an older head is not replayed: the attached call watched ${NEW_HEAD:0:7} (rc $rc1/$rc2)"
+else
+  echo "  FAIL owner's UNKNOWN on an older head was replayed: rc $rc1/$rc2"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
+fi
+shared_unknown none $NEW_HEAD
+if [[ "$rc1" == 2 && "$rc2" == 0 ]] && grep -q "no sha recorded" "$TMP/second" && grep -q "CI-WATCH GREEN" "$TMP/second"; then
+  echo "  OK   an owner's UNKNOWN on an unreadable head is not replayed (rc $rc1/$rc2)"
+else
+  echo "  FAIL owner's UNKNOWN on an unreadable head was replayed: rc $rc1/$rc2"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
+fi
+shared_unknown $OLD_HEAD $OLD_HEAD
+if [[ "$rc1" == 2 && "$rc2" == 2 ]] && grep -q "CI-WATCH UNKNOWN" "$TMP/second" && ! grep -q "not taken over" "$TMP/second"; then
+  echo "  OK   control: an owner's UNKNOWN on the current head is replayed (rc $rc1/$rc2)"
+else
+  echo "  FAIL control: UNKNOWN on the current head not replayed: rc $rc1/$rc2"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
 fi
 # ...and in ref mode: the owner judged the tip it last read; the ref has moved for the attached call.
 shared_tips() { # $1 = the attached call's tip
