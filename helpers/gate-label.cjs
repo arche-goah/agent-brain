@@ -17,7 +17,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { stripLead } = require('./operator-lines.cjs');
+const { stripLead, lines } = require('./operator-lines.cjs');
 
 const HEAD = /^(?:PreToolUse|PostToolUse):\S+ hook error:\s*/;
 // `BLOCKED (instance-key-gate, change level)` names its gate before the comma; a bare `BLOCKED:` (file-guard) names
@@ -39,7 +39,15 @@ function gateLabel(rawText, root) {
   // The operator's sentence in front of a hold (hooks/operator-lead.cjs) is no label: taken off first (Windows review
   // of #683: with it every hold read "a hook"). Its text comes from the brain's operator-lines.json - one source.
   const t = stripLead(String(rawText || '').trim(), root).replace(HEAD, '');
-  const m = LABEL.exec(t);
+  let m = LABEL.exec(t);
+  // Structurally too (Windows re-review of #683, 2026-11-27): a hold written with a sentence the operator has since
+  // edited or translated no longer matches the table, and read "a hook" again. In a brain that writes sentences, up
+  // to three leading lines without a label are dropped when a line after them carries one - the table's history
+  // does not matter. A brain without sentences reads as before (no line is taken off).
+  if (!(m && (m[1] || m[2])) && Object.keys(lines(root)).length) {
+    const ls = t.split(/\r?\n/);
+    for (let i = 1; i < Math.min(ls.length, 4) && !(m && (m[1] || m[2])); i++) m = LABEL.exec(ls.slice(i).join('\n'));
+  }
   const own = m && (m[1] || m[2]);
   if (own && own.trim()) return own.trim();
   const h = hookRx().exec(t);
