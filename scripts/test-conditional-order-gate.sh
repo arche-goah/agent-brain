@@ -100,6 +100,18 @@ run_case decides-ps block PowerShell '{"command":"gh pr comment 12 -R o/r --body
 mk "$T/claude-p.jsonl" '"wait for the CI, then run the headless check"' 0 ''
 run_case claude-p block Bash '{"command":"claude -p --safe-mode < brief.md > out.md"}'
 
+# --- the operator's `!` command (turn-kind.cjs operatorWords / isNotification). The incident 2026-11-25 (macOS, one
+# record): the script's output "after the pin move" held a push. The Windows form writes input and output as two user
+# records (Windows review 2026-11-26): the output record opens no turn, so the typed command stays the operator's word.
+mk "$T/bang-one-record.jsonl" '"<bash-input>bash core/scripts/brain-update.sh</bash-input><bash-stdout>OK   ledger reconcile after the pin move</bash-stdout><bash-stderr></bash-stderr>"' 0 ''
+run_case bang-one-record allow Bash '{"command":"git push origin feat/x"}'
+mk "$T/bang-two-records.jsonl" '"<bash-input>bash core/scripts/brain-update.sh</bash-input>"' 0 '' '"<bash-stdout>OK   ledger reconcile after the pin move</bash-stdout><bash-stderr></bash-stderr>"'
+run_case bang-two-records allow Bash '{"command":"git push origin feat/x"}'
+mk "$T/bang-two-typed.jsonl" '"<bash-input>echo push it once CI is green</bash-input>"' 0 '' '"<bash-stdout>done</bash-stdout><bash-stderr></bash-stderr>"'
+run_case bang-two-typed block Bash '{"command":"git push origin feat/x"}'
+mk "$T/bang-one-typed.jsonl" '"<bash-input>echo push it once CI is green</bash-input><bash-stdout>done</bash-stdout>"' 0 ''
+run_case bang-one-typed block Bash '{"command":"git push origin feat/x"}'
+
 # --- the markers release the call
 mk "$T/met.jsonl" '"after the mac answers, push it"' 0 '"CONDITION-MET: after the mac answers — answered 16:19 in core/LOG.md (commit b757532)."'
 run_case met allow Bash '{"command":"git push origin feat/x"}'

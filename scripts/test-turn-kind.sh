@@ -44,6 +44,12 @@ PEER_MSG=$'<system-reminder id="51bdc4546a34c2b3">\nAnother Claude session sent 
             <command-message>mcp</command-message>
             <command-args></command-args>')" = true ] && ok "local command name record = not a prompt" || bad "command record read as prompt"
 [ "$(probe '<local-command-stdout>Reconnected to grandma3.</local-command-stdout>')" = true ] && ok "local-command stdout = not a prompt" || bad "local stdout read as prompt"
+# The Windows form of a `!` command: input and output are two user records (Windows review 2026-11-26, 15 of 15 pairs).
+# The output record is machine text and opens no turn; the input record is the operator's and does.
+[ "$(probe $'<bash-stdout>OK   ledger reconcile after the pin move\nDONE</bash-stdout><bash-stderr></bash-stderr>')" = true ] && ok "a record of only bang output = not a prompt" || bad "bang output record read as prompt"
+[ "$(probe '<bash-stderr>warn: then retry</bash-stderr>')" = true ] && ok "a record of only bang stderr = not a prompt" || bad "bang stderr record read as prompt"
+[ "$(probe '<bash-input>git push</bash-input>')" = false ] && ok "a record of the typed bang command stays a prompt" || bad "bang input record read as notification"
+[ "$(probe '<bash-stdout>x</bash-stdout> and then push it')" = false ] && ok "bang output + words typed after it = operator" || bad "words after a bang output ignored"
 [ "$(probe '<command-name>/mcp</command-name> and please also check the PR')" = false ] && ok "command frames + operator words = operator" || bad "operator words after a command ignored"
 [ "$(probe 'Base directory for this skill: x. Do the review.')" = false ] && ok "a skill text record stays a prompt" || bad "skill text read as notification"
 

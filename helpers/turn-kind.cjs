@@ -23,6 +23,7 @@
 const FRAMES = /<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder\b[^>]*>|<task-notification>[\s\S]*?<\/task-notification>/g;
 const LOCAL = /<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<local-command-std(?:out|err)>[\s\S]*?<\/local-command-std(?:out|err)>|<command-(?:name|message|args)>[\s\S]*?<\/command-(?:name|message|args)>/g;
 const LOCAL_MARK = /<local-command-(?:caveat|stdout|stderr)>|<command-name>/;
+const BANG_MARK = /<bash-std(?:out|err)>/;
 
 // A Stop hook's block comes back as a user record "Stop hook feedback:\n…" with isMeta and no
 // sourceToolUseID - the shape of a message the operator types mid-turn (measured 2026-11-02, Windows
@@ -35,6 +36,10 @@ function isNotification(text) {
   if (typeof text !== 'string') return false;
   if (STOP_FEEDBACK.test(text.replace(FRAMES, ''))) return true;
   if (/<task-notification>/.test(text) && !text.replace(FRAMES, '').trim()) return true;
+  // The output of the operator's `!` command as a record of its own (the Windows form: input and output are two user
+  // records, measured 2026-11-26 on the Windows instance, 15 of 15 pairs): machine text, no turn of its own - the
+  // turn is the typed command's (BANG_OUTPUT below).
+  if (BANG_MARK.test(text) && !text.replace(FRAMES, '').replace(BANG_OUTPUT, '').trim()) return true;
   return LOCAL_MARK.test(text) && !text.replace(FRAMES, '').replace(LOCAL, '').trim();
 }
 
@@ -151,7 +156,10 @@ const HOOK_PASTE = /^[ \t]*(?:Error:\s*)?(?:(?:PreToolUse|PostToolUse|UserPrompt
 // The output of the operator's `!` command (the harness wraps it as <bash-stdout>/<bash-stderr>) is the machine's text;
 // the typed command (<bash-input>) is the operator's and stays, without its tags. Measured 2026-11-25 on the macOS
 // instance: a prompt of only `!bash core/scripts/brain-update.sh` held a push - the script's line "OK ledger reconcile
-// after the pin move" read as the operator's condition.
+// after the pin move" read as the operator's condition. On Windows input and output are two user records (measured
+// 2026-11-26 on the Windows instance, 15 of 15 pairs): an output-only record is no turn (isNotification above), so
+// the typed command stays the turn's operator word in both forms. scripts/decision-review.py reads the same tags and
+// counts the typed command as no prompt to the AI - a deliberate difference, named there.
 const BANG_OUTPUT = /<bash-(stdout|stderr)>[\s\S]*?<\/bash-\1>/g;
 const BANG_INPUT = /<\/?bash-input>/g;
 
