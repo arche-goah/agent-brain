@@ -33,7 +33,9 @@ EVERYDAY = ("git commit -m x", "git push", "git push origin feat/x", "git -C /re
 
 def load(path):
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
+        # utf-8-sig: a list edited by hand on Windows (PowerShell 5.1 `Out-File -Encoding utf8`) starts with a BOM, and
+        # plain utf-8 called it "broken or empty" (Windows review of #695, 2026-11-26)
+        return json.loads(Path(path).read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return None
 
@@ -107,6 +109,22 @@ def main():
             lines.append(f".claude/rules/operator-only.json does not name {', '.join(gone)} from the core template — "
                          "a matter missing there never reaches the operator; add it, or keep its id with the "
                          "operator's own label")
+        # The other direction (Windows review of #669, 2026-11-25): an id the core retired stays in an existing copy,
+        # and the brain's AI goes on asking the operator about a matter the core no longer gives them.
+        # Keeping one is the operator's call, and it has a recordable form (Windows review of #695, 2026-11-26: the
+        # second way out had none, so the line never went quiet): `operator_word` on the matter, the operator's
+        # words with their date, the same shape a marker's `needs_operator_word` asks for.
+        kept = {m.get("id"): str(m.get("operator_word") or "").strip() for m in data["matters"] if isinstance(m, dict)}
+        old = [r for r in tpl.get("retired") or [] if isinstance(r, dict) and r.get("id") in have]
+        for r in old:
+            word = kept.get(r["id"], "")
+            if word and re.search(r"\b20\d\d-\d\d-\d\d\b", word):
+                continue
+            why = (f"its `operator_word` has no date ({word!r})" if word else
+                   "the AI asks the operator about it although the core no longer does")
+            lines.append(f".claude/rules/operator-only.json still names {r['id']}, which the core took out of the list "
+                         f"({r.get('since', '?')}: {r.get('why', 'no reason given')}) — {why}; delete the entry, or "
+                         "keep it with `\"operator_word\": \"<the operator's words> (<date>)\"` on that matter")
 
     asked, star = [], False
     for name in ("settings.json", "settings.local.json"):

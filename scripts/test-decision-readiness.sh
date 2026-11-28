@@ -55,6 +55,35 @@ out="$(run)"
 has "dropped core matter named" "does not name release" "$out"
 hasnt "the other matters are not named" "goal" "$out"
 
+# 5b — a copy that still names an id the core retired (Windows review of #669, 2026-11-25: `core-new` stays in every
+# existing brain and its AI goes on asking first) is a finding; the fresh template copy is not
+cp "$HERE/../templates/rules-instance/operator-only.json" "$B/.claude/rules/operator-only.json"
+"$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); d["matters"].append({"id":"core-new","label":"new functionality in the core"}); json.dump(d,open(sys.argv[1],"w"))' "$(native "$B/.claude/rules/operator-only.json")"
+out="$(run)"
+has "a retired id still in the copy is named" "still names core-new" "$out"
+has "its reason is said" "the review decides" "$out"
+cp "$HERE/../templates/rules-instance/operator-only.json" "$B/.claude/rules/operator-only.json"
+out="$(run)"
+hasnt "the template copy itself names no retired id" "still names" "$out"
+# 5c — keeping a retired id is the operator's call, and it has a recordable form (Windows review of #695): the
+# operator's words WITH a date silence it; words without a date do not
+OO="$(native "$B/.claude/rules/operator-only.json")"
+"$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); d["matters"].append({"id":"core-new","label":"new core functionality","operator_word":"keep asking me before new core features (2026-11-27)"}); json.dump(d,open(sys.argv[1],"w"))' "$OO"
+out="$(run)"
+hasnt "a retired id kept with the operator's dated word is silent" "still names core-new" "$out"
+"$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); d["matters"][-1]["operator_word"]="keep asking me"; json.dump(d,open(sys.argv[1],"w"))' "$OO"
+out="$(run)"
+has "an operator_word without a date does not silence it" "has no date" "$out"
+# 5d — a copy with a UTF-8 BOM (Windows PowerShell 5.1 Out-File -Encoding utf8) is read, not "broken or empty"
+"$PY" -c 'import sys; p=sys.argv[1]; b=open(p,"rb").read(); open(p,"wb").write(b"\xef\xbb\xbf"+b)' "$OO"
+out="$(run)"
+hasnt "a BOM is no broken list" "broken or empty" "$out"
+has "the retired check runs on a BOM copy" "still names core-new" "$out"
+# 5e — no id is both a matter and retired in the template: every brain would get a finding either way
+dup="$("$PY" -c 'import json,sys; d=json.load(open(sys.argv[1],encoding="utf-8")); m={x.get("id") for x in d["matters"]}; r={x.get("id") for x in d.get("retired") or []}; print(",".join(sorted(m & r)))' "$(native "$HERE/../templates/rules-instance/operator-only.json")")"
+[ -z "$dup" ] && ok "template matters and retired ids are disjoint" || bad "template matters and retired ids are disjoint" "both: $dup"
+cp "$HERE/../templates/rules-instance/operator-only.json" "$B/.claude/rules/operator-only.json"
+
 # 6 — an empty list is a finding
 printf '{"matters":[]}\n' > "$B/.claude/rules/operator-only.json"
 out="$(run)"
