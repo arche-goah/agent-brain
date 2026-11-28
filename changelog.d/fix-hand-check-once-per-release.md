@@ -10,5 +10,6 @@
   when a named PR or head (`train/…`, `release/…`, `at <sha>`) changes `.claude-plugin/plugin.json`; that check is the
   pin review too. A branch name ends on `[\w-]` (a sentence's full stop is no part of it); a merged, deleted branch is
   judged through its PR; an unreadable lookup is refused as "could not read <head>", never as a measured "no release
-  commit". `<repo>#n` without a space binds to that repo (it was read as no PR). Replay over 87 Windows requests
+  commit"; a head gh answers for but does not find (compare "HTTP 404" with an empty PR list, or `pr view` "Could not
+  resolve") is refused as "no such head <name> - check the name", not as unread. `<repo>#n` without a space binds to that repo (it was read as no PR). Replay over 87 Windows requests
   since 2026-11-06: main refuses 15, this 35; the 20 new holds are train heads and single-PR re-checks, no release head.

@@ -294,20 +294,32 @@ BRANCH_REF = re.compile(r"(?<![\w/.-])((?:train|release)/[\w./-]*[\w-])")
 HEAD_SHA = re.compile(r"\bat (?:head )?`?([0-9a-f]{7,40})\b")
 
 
+# gh answered, and the head is not there (content review of #662, 2026-11-28: a misspelled head got "could not read
+# ... post again once gh reads it" forever). Measured with gh 2026-11-28: a compare of an unknown ref or sha says
+# "Not Found (HTTP 404)", `pr view` of an unknown number "Could not resolve to a PullRequest".
+MISSING = "missing"
+_NOT_THERE = re.compile(r"HTTP 404|Could not resolve to a", re.I)
+
+
 def _gh_json(args):
+    """The parsed answer; MISSING when gh read the repo and the object is not there; None when the call failed."""
     import json
     gh = os.environ.get("SHARED_MEMORY_POST_GH", "gh")
     try:
         r = subprocess.run([gh, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
-        return json.loads(r.stdout) if r.returncode == 0 else None
+        if r.returncode != 0:
+            return MISSING if _NOT_THERE.search(r.stderr or "") else None
+        return json.loads(r.stdout)
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return None
 
 
 def is_release_pr(repo: str, n: str):
     """True when the PR carries the release commit: it changes the plugin manifest (the version); False when not;
-    None when gh could not read it (an unread head is neither - the refusal says so)."""
+    MISSING when there is no such PR; None when gh could not read it (an unread head is neither - the refusal says so)."""
     d = _gh_json(["pr", "view", n, "-R", repo, "--json", "files"])
+    if d == MISSING:
+        return MISSING
     if not isinstance(d, dict):
         return None
     return any(f.get("path") == RELEASE_FILE for f in d.get("files") or [])
@@ -315,18 +327,23 @@ def is_release_pr(repo: str, n: str):
 
 def is_release_branch(repo: str, branch: str):
     """True when the branch or commit changes the plugin manifest against main (it carries the release commit); False
-    when not; None when gh could not read it."""
+    when not; MISSING when no such branch, commit or PR exists; None when gh could not read it."""
     d = _gh_json(["api", f"repos/{repo}/compare/main...{branch}", "--jq", "{s: .status, f: [.files[].filename]}"])
     if isinstance(d, dict) and d.get("s") in ("behind", "identical"):
         # already in main (a check asked before its merge, read again later): the head's own commit decides
         d = _gh_json(["api", f"repos/{repo}/compare/{branch}~1...{branch}", "--jq", "{s: .status, f: [.files[].filename]}"])
-    if d is None and "/" in branch:
+        if d == MISSING:
+            d = None  # the head exists (the first compare read it): its parent unread is a failed read, not a typo
+    if d in (None, MISSING) and "/" in branch:
         # a merged train branch is deleted and the compare 404s (content review of #662, 2026-11-25): its PR decides
         prs = _gh_json(["pr", "list", "-R", repo, "--head", branch, "--state", "all", "--json", "number"])
         if isinstance(prs, list) and prs:
             got = [is_release_pr(repo, str(p.get("number"))) for p in prs]
-            return True if any(got) else (None if None in got else False)
-        return None
+            return True if True in got else (None if None in got else False)
+        # read, nothing found, after a 404: no such head; a failed list (or a failed compare) stays unread
+        return MISSING if d == MISSING and isinstance(prs, list) else None
+    if d == MISSING:
+        return MISSING
     if not isinstance(d, dict):
         return None
     return RELEASE_FILE in (d.get("f") or [])
@@ -353,15 +370,20 @@ def os_check_not_needed(text: str, extra=()) -> str:
         # step line, the commit in the title)
         refs = list(dict.fromkeys(BRANCH_REF.findall(text) + HEAD_SHA.findall("\n".join([text, *extra]))))
         heads += [(f"{default} {b}", is_release_branch(default, b)) for b in refs]
-    if any(rel for _, rel in heads):
+    if any(rel is True for _, rel in heads):
         return ""
     not_release = [h for h, rel in heads if rel is False]
     unread = [h for h, rel in heads if rel is None]
-    if not not_release and not unread:
+    missing = [h for h, rel in heads if rel == MISSING]
+    if not not_release and not unread and not missing:
         return ""
     found = []
     if not_release:
         found.append(", ".join(not_release) + f" carries no release commit ({RELEASE_FILE} unchanged)")
+    if missing:
+        # content review of #662 (2026-11-28): gh answered and found nothing - posting again cannot change that
+        found.append("no such head " + ", ".join(missing) + " (gh read the repo and found no such branch, commit or "
+                     "PR) - check the name")
     if unread:
         # content review of #662: an unreadable lookup was refused as "no head carries the release commit" - unmeasured
         found.append("could not read " + ", ".join(unread) + " (the gh lookup failed, so whether it carries the release "

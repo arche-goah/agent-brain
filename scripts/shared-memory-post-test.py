@@ -245,12 +245,17 @@ def main() -> int:
         stub = ghb / "gh-stub.py"
         stub.write_text(
             "import json, sys\n"
+            "if sys.argv[1:3] == ['pr', 'list'] and 'train/listfail' in sys.argv:\n"
+            "    print('could not connect', file=sys.stderr); sys.exit(1)\n"
             "if sys.argv[1:3] == ['pr', 'list']:\n"
             "    print(json.dumps([{'number': 8}] if 'train/release-2-1-7-merged' in sys.argv else [])); sys.exit(0)\n"
             "n = sys.argv[3]\n"
             "repo = sys.argv[5] if len(sys.argv) > 5 else ''\n"
-            "if sys.argv[1] == 'api' and (sys.argv[2].endswith('.') or 'merged' in sys.argv[2]):\n"
-            "    print('Not Found (HTTP 404)', file=sys.stderr); sys.exit(1)\n"
+            "if sys.argv[1] == 'api' and any(w in sys.argv[2] for w in ('merged', 'typo', 'deadbee', 'listfail')) \\\n"
+            "        or sys.argv[1] == 'api' and sys.argv[2].endswith('.'):\n"
+            "    print('gh: Not Found (HTTP 404)', file=sys.stderr); sys.exit(1)\n"
+            "if sys.argv[1:3] == ['pr', 'view'] and n == '99999':\n"
+            "    print('GraphQL: Could not resolve to a PullRequest with the number of 99999.', file=sys.stderr); sys.exit(1)\n"
             "if 'files' in sys.argv and n == '9':\n"
             "    print('could not connect', file=sys.stderr); sys.exit(1)\n"
             "if sys.argv[1] == 'api':\n"
@@ -399,6 +404,16 @@ def main() -> int:
                      2, "could not read o/core#9", "an unreadable head is refused as unread, not as 'no release commit'"),
                     ("Train head wording", "Please run the fixtures on Windows at the head of #7.",
                      2, "o/core#7 carries no release commit", "control: a read train head keeps the measured wording"),
+                    # content review of #662 (2026-11-28): a head that does not exist got "could not read ... post
+                    # again" forever - gh answered, and found nothing
+                    ("Misspelled release branch", "Please run every fixture suite on Windows at train/release-2-1-7-typo.",
+                     2, "no such head o/core train/release-2-1-7-typo", "a misspelled branch is named as no such head"),
+                    ("Unknown commit", "Please run the full lint on Windows at deadbee.",
+                     2, "no such head o/core deadbee", "an unknown commit is named as no such head"),
+                    ("Unknown PR", "Please run the fixtures on Windows at the head of #99999.",
+                     2, "no such head o/core#99999", "a PR number gh cannot resolve is named as no such head"),
+                    ("Branch list failed", "Please run every fixture suite on Windows at train/listfail.",
+                     2, "could not read o/core train/listfail", "control: a 404 with a FAILED PR list stays unread"),
                 ):
                     r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
                              me="alex-mac", brain=cip)
