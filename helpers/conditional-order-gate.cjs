@@ -21,7 +21,8 @@
  *   - `Agent` from the third call in the turn (one or two agents are a lookup, nine are a
  *     scan — the collaborator's threshold);
  *   - a shell command that leaves the machine or starts a model: `claude -p`, `git push`,
- *     `gh pr create|comment|review|merge|edit|ready|close|reopen`, `gh issue create|comment|edit|close|reopen`, `gh release create|edit|delete`, `gh api … -X`.
+ *     a writing `gh pr|issue|release|repo` verb (list: GH_EXTERNAL), `gh api` with a field, an input file or a
+ *     method other than GET - read through the shared gh parser (`gh.exe`, a quoted path, `bash -c`, `gh -R x`).
  * It passes once the agent has written, in this turn, either
  *   CONDITION-MET: <the condition, in the operator's words> — <evidence: where/when it was met>
  * or
@@ -45,7 +46,7 @@ const path = require('path');
 const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, questionAnswers } = require('./turn-kind.cjs');
 // A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
 const { isGitPush } = require('./git-push.cjs');
-const { answerHalves } = require('./published-text.cjs');
+const { answerHalves, invocations } = require('./published-text.cjs');
 const { intents, intentFor } = require('./autonomous-mode.cjs');
 
 let data = '';
@@ -58,6 +59,41 @@ const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
 const AGENT_THRESHOLD = 3;   // the call that trips the gate: this many Agent calls in one turn
 const EXTERNAL = /(?:^|[\s;&|(`])(?:claude\s+-p\b|gh\s+pr\s+(?:create|comment|review|merge|edit|ready|close|reopen)\b|gh\s+issue\s+(?:create|comment|edit|close|reopen)\b|gh\s+release\s+(?:create|edit|delete)\b|gh\s+api\b[^\n|;&]*\s-X\s)/i;
+// The same calls read by the shared gh parser (published-text.cjs `invocations`), with this gate's own verb list
+// (review of agent-brain #686, 2026-11-26, Windows: the regex above missed `gh.exe pr ready`, `& "<dir>\gh.exe" pr edit`,
+// `bash -c 'gh pr edit …'`, `gh -R o/r pr edit`, `gh api … -f body=x` / `--method PATCH`, `gh release upload` and
+// `gh issue delete`). The regex stays as the fallback for a text the parser cannot read; a call either one names is held.
+const GH_EXTERNAL = {
+  pr: ['create', 'comment', 'review', 'merge', 'edit', 'ready', 'close', 'reopen', 'update-branch', 'lock', 'unlock'],
+  issue: ['create', 'comment', 'edit', 'close', 'reopen', 'delete', 'transfer', 'lock', 'unlock', 'pin', 'unpin'],
+  release: ['create', 'edit', 'delete', 'upload', 'delete-asset'],
+  repo: ['create', 'edit', 'delete', 'rename', 'archive', 'unarchive', 'fork'],
+};
+const GH_GLOBAL_WITH_VALUE = /^(?:-R|--repo|--hostname)$/;
+function ghExternal(cmd, ps) {
+  const calls = invocations(cmd, ps, 'gh');
+  if (!calls) return false;
+  for (const w of calls) {
+    let i = 1;
+    while (i < w.length && /^-/.test(w[i])) i += GH_GLOBAL_WITH_VALUE.test(w[i]) ? 2 : 1;   // `gh -R o/r pr edit`
+    const sub = String(w[i] || '').toLowerCase();
+    const verb = String(w[i + 1] || '').toLowerCase();
+    if (sub === 'api') {
+      const args = w.slice(i + 1);
+      // a field or an input file makes gh POST by itself; an explicit method other than GET writes
+      if (args.some((a) => /^(?:-f|-F|--field|--raw-field|--input)(?:=|$)/.test(a) || /^-[fF]\S/.test(a))) return true;
+      for (let k = 0; k < args.length; k++) {
+        const m = /^(?:-X|--method)(?:=?(.+))?$/.exec(args[k]);
+        if (!m) continue;
+        const method = m[1] !== undefined ? m[1] : args[k + 1];
+        if (method && !/^GET$/i.test(method)) return true;
+      }
+      continue;
+    }
+    if ((GH_EXTERNAL[sub] || []).includes(verb)) return true;
+  }
+  return false;
+}
 const MET = /CONDITION-MET:\s*(\S[^\n]{19,})/;
 const NONE = /CONDITION-NONE:\s*(\S[^\n]{14,})/;
 
@@ -213,7 +249,7 @@ process.stdin.on('end', () => {
   let why = '';
   if (tool === 'Workflow') why = 'a workflow (an audit-sized run)';
   else if (tool === 'Agent') why = `agent number ${AGENT_THRESHOLD} or more in this turn`;
-  else if ((tool === 'Bash' || tool === 'PowerShell') && typeof ti.command === 'string' && (EXTERNAL.test(ti.command) || isGitPush(ti.command))) {
+  else if ((tool === 'Bash' || tool === 'PowerShell') && typeof ti.command === 'string' && (EXTERNAL.test(ti.command) || ghExternal(ti.command, tool === 'PowerShell') || isGitPush(ti.command))) {
     why = 'externally effective (it leaves the machine or starts a model run)';
   } else return allow();
   if (!input.transcript_path) return allow();

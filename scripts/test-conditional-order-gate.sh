@@ -105,6 +105,29 @@ mk "$T/release.jsonl" '"after the review, cut the release"' 0 ''
 run_case release block Bash '{"command":"gh release create v1.2.3 -R o/r --notes-file n.md"}'
 mk "$T/pr-view.jsonl" '"after the mac answers, update the PR text"' 0 ''
 run_case pr-view allow Bash '{"command":"gh pr view 681 -R o/r --json body"}'
+# 2026-11-28, review of #686 (Windows): the forms the regex missed, now read through the shared gh parser
+for c in ghexe-ready:PowerShell:'gh.exe pr ready 12' \
+         ghpath-edit:PowerShell:'& \"C:\\Program Files\\GitHub CLI\\gh.exe\" pr edit 681 --body-file b.md' \
+         bash-c-edit:Bash:"bash -c 'gh pr edit 681 --body x'" \
+         repo-first:Bash:'gh -R o/r pr edit 681 --body x' \
+         api-field:Bash:'gh api repos/o/r/pulls/681 -f body=x' \
+         api-patch:Bash:'gh api repos/o/r/pulls/681 --method PATCH --input b.json' \
+         api-method-eq:Bash:'gh api repos/o/r/issues/1 --method=DELETE' \
+         release-upload:Bash:'gh release upload v1 a.zip -R o/r' \
+         issue-delete:Bash:'gh issue delete 7 -R o/r --yes' \
+         update-branch:Bash:'gh pr update-branch 12 -R o/r' \
+         repo-edit:Bash:'gh repo edit o/r --description x'; do
+  n="${c%%:*}"; rest="${c#*:}"; tool="${rest%%:*}"; cmd="${rest#*:}"
+  mk "$T/$n.jsonl" '"after the mac answers, update the PR text"' 0 ''
+  run_case "$n" block "$tool" "{\"command\":\"$cmd\"}"
+done
+# reads stay free through the parser too: a GET by default, an explicit GET, a quoted gh call that is data
+for c in api-get:'gh api repos/o/r/pulls/681' api-get-x:'gh api repos/o/r/pulls --method GET' \
+         release-list:'gh release list -R o/r' echo-data:'echo \"gh pr edit 681 is the next step\"'; do
+  n="${c%%:*}"; cmd="${c#*:}"
+  mk "$T/$n.jsonl" '"after the mac answers, update the PR text"' 0 ''
+  run_case "$n" allow Bash "{\"command\":\"$cmd\"}"
+done
 mk "$T/decides-ps.jsonl" '"Alex decides this one; then publish the comment"' 0 ''
 run_case decides-ps block PowerShell '{"command":"gh pr comment 12 -R o/r --body-file n.md"}'
 mk "$T/claude-p.jsonl" '"wait for the CI, then run the headless check"' 0 ''
