@@ -121,6 +121,14 @@ SKIPPED = [{"number": 703, "title": "fine", "diff": DIFF_618}, {"number": 704, "
 rc, out = run(["needle"], SKIPPED)
 check(rc == 2, "no hit while a diff was unreadable: exit 2, not a clean no-hit")
 check("1 of 2 open PR(s)" in out and "#704" in out, "the summary names the searched count and the skipped PR")
+# Windows review of #687, round one (minor, taken into the train 2026-11-28): git quotes a non-ASCII path C-style;
+# the header below is git's own output for a file named "<e-acute> b.md" (measured 2026-11-28, trailing tab included)
+DIFF_QUOTED = ('diff --git "a/\\303\\251 b.md" "b/\\303\\251 b.md"\n'
+               '--- "a/\\303\\251 b.md"\t\n+++ "b/\\303\\251 b.md"\t\n@@ -1 +1 @@\n-x\n+needle\n'
+               'diff --git "a/tab\\there.md" "b/tab\\there.md"\n--- /dev/null\n+++ "b/tab\\there.md"\n@@ -0,0 +1 @@\n+needle\n')
+rc, out = run(["needle"], [{"number": 705, "title": "quoted", "diff": DIFF_QUOTED}])
+check("#705 " + chr(0xE9) + " b.md:1 + needle" in out, "a quoted non-ASCII path is printed as the file's name")
+check("#705 tab\there.md:1 + needle" in out, "a C escape in a quoted path is decoded")
 rc, out = run(["SHELL_TOOLS"], SKIPPED)
 check(rc == 0 and "1 not readable" in out, "a hit with a skipped PR: exit 0, the summary still names the skip")
 

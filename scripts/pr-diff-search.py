@@ -49,6 +49,33 @@ def origin_repo():
     return m.group(1) if m else None
 
 
+_C_ESC = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+
+
+def header_path(p, prefix):
+    """The path of a `---`/`+++` header, without its a/ or b/ prefix. Git quotes a path with non-ASCII bytes or
+    control characters C-style (`"b/\\303\\244.md"`, core.quotePath): the octal escapes are bytes of the UTF-8 name
+    (Windows review of #687, round one: the quoted form was printed as is)."""
+    p = p.strip()
+    if len(p) >= 2 and p[0] == '"' and p[-1] == '"':
+        out, s, i = bytearray(), p[1:-1], 0
+        while i < len(s):
+            c = s[i]
+            if c == "\\" and i + 1 < len(s):
+                o = re.match(r"[0-7]{1,3}", s[i + 1:])
+                if o:
+                    out.append(int(o.group(0), 8) & 0xFF)
+                    i += 1 + len(o.group(0))
+                    continue
+                out.append(_C_ESC.get(s[i + 1], ord(s[i + 1])))
+                i += 2
+                continue
+            out.extend(c.encode("utf-8"))
+            i += 1
+        p = out.decode("utf-8", errors="replace")
+    return p[len(prefix):] if p.startswith(prefix) else p
+
+
 def hits_in(diff, rx):
     """Yield (path, line, sign, text) for every added or removed line of a unified diff that matches rx."""
     # `---` / `+++` are headers only OUTSIDE a hunk: inside one, a removed `-- comment` or an added `++ x` line is
@@ -65,12 +92,12 @@ def hits_in(diff, rx):
             continue
         in_hunk = old_left > 0 or new_left > 0
         if not in_hunk and raw.startswith("--- "):
-            p = raw[4:].strip()
-            path = None if p == "/dev/null" else (p[2:] if p.startswith("a/") else p)
+            p = header_path(raw[4:], "a/")
+            path = None if p == "/dev/null" else p
         elif not in_hunk and raw.startswith("+++ "):
-            p = raw[4:].strip()
+            p = header_path(raw[4:], "b/")
             if p != "/dev/null":
-                path = p[2:] if p.startswith("b/") else p
+                path = p
         elif raw.startswith("@@"):
             m = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))?", raw)
             if m:
