@@ -264,19 +264,52 @@ function rotate(file) {
  * conclusions belong in the invariant register, not in the raw log. It is bounded by
  * `rotate()` above — the newest generation plus one older stay on disk.
  */
+/**
+ * The one place that names a recorder's log: `.claude-state/<marker>.jsonl`, or null when the marker is no plain
+ * file name. A marker like `..\..\escaped` would otherwise write two folders above `.claude-state` (Windows review of
+ * #693, 2026-11-26: measured on main for a hit, and on every clean run once empty runs leave their file). Markers in
+ * use are upper-case ids with dashes; anything with a separator or a leading dot records nothing.
+ */
+const MARKER_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+function recordFile(check) {
+  const marker = String((check && check.marker) || '');
+  if (!MARKER_FILE.test(marker)) return null;
+  const dir = path.join(ROOT, '.claude-state');
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, `${marker.toLowerCase()}.jsonl`);
+}
+
 function record(check, items, payload) {
   try {
     const input = JSON.parse(payload);
-    const dir = path.join(ROOT, '.claude-state');
-    fs.mkdirSync(dir, { recursive: true });
+    const file = recordFile(check);
+    if (!file) return;
     const session = path.basename(input.transcript_path || 'unknown', '.jsonl');
     const stamp = new Date().toISOString();
-    const file = path.join(dir, `${check.marker.toLowerCase()}.jsonl`);
     const lines = items.map((it) => JSON.stringify({
       at: stamp, session, check: check.marker, ...it,
     })).join('\n');
     rotate(file);
     fs.appendFileSync(file, `${lines}\n`);
+  } catch (e) { /* recording must never break a turn */ }
+}
+
+/**
+ * A recording check that ran and found nothing still leaves its trace: the record file exists and its mtime is the
+ * last run, with no line added. Before, a recorder with 0 hits had no file at all, and "never ran" looked the same
+ * (measured 2026-11-26 on a macOS instance: two record-mode gates ran for 6 and 15 days, no .jsonl existed, and the
+ * alpha review could not tell an idle instrument from a dead one).
+ * Only a CLEAN run counts (`cleanRun` in run()): no error, and the output was empty or JSON without a malformed
+ * block. Output that cannot be parsed, or `{"decision":"block"}` with no reason, leaves nothing - such a recorder
+ * goes stale and the review asks about it, instead of reading as idle and healthy (Windows review of #693).
+ */
+function ranEmpty(check) {
+  try {
+    const file = recordFile(check);
+    if (!file) return;
+    fs.closeSync(fs.openSync(file, 'a'));
+    const now = new Date();
+    fs.utimesSync(file, now, now);
   } catch (e) { /* recording must never break a turn */ }
 }
 
@@ -319,8 +352,10 @@ function run(check, base) {
     const child = execFile('node', [cmd, ...(check.args || [])], { timeout: 10000 },
       (err, stdout) => {
         let parsed = {};
+        let readable = true;
         try { parsed = JSON.parse(String(stdout || '').trim() || '{}'); }
-        catch (e) { /* a check that prints nothing has nothing to say */ }
+        catch (e) { readable = false; /* a check that prints nothing has nothing to say */ }
+        if (!parsed || typeof parsed !== 'object') { parsed = {}; readable = false; }
         if (check.mode === 'record') {
           if (Array.isArray(parsed.record) && parsed.record.length) {
             record(check, parsed.record, payload);
@@ -329,6 +364,8 @@ function run(check, base) {
             // it recorded nothing, ever: measured 2026-10-23, premise-gate ran as a recorder
             // in the template and no premise-gate.jsonl existed on any brain checked.
             record(check, [{ would_block: true, reason: short(parsed.reason, 300) }], payload);
+          } else if (!err && readable && parsed.decision !== 'block') {
+            ranEmpty(check); // cleanRun: see ranEmpty()
           }
           return resolve(null); // a recorder never blocks, by construction
         }

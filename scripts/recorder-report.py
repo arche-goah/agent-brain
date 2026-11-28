@@ -124,10 +124,22 @@ def main(argv=None):
         if logs and logs != [own]:
             label += f" (logs {', '.join(logs)})"
         if not logs:
-            print(f"   {label}: no log yet - the recorder has never fired")
+            # The dispatcher leaves the file on every clean run (core #693): no file = it never ran clean.
+            print(f"   {label}: no log yet - the recorder never ran clean (not wired, never ran, or every run errored)")
+            continue
+        # The mtime is the last clean run or hit (core #693); a log untouched since before the window
+        # prints the same counts as an idle one - say when it was last written (Windows review of #693).
+        last = max((state / n).stat().st_mtime for n in [*logs, *[x[:-len(".jsonl")] + ".1.jsonl" for x in logs]]
+                   if (state / n).exists())
+        last_day = datetime.datetime.fromtimestamp(last).date().isoformat()
+        if last_day < since:
+            due += 1
+            print(f"!! {label}: last written {last_day}, before the {a.days}-day window - the recorder no longer "
+                  "runs clean; check its row and its errors")
             continue
         sessions = len({e.get("session") for e in rows})
-        head = f"{label}: {len(rows)} entr{'y' if len(rows) == 1 else 'ies'} in {a.days} days, {sessions} session(s), "
+        head = (f"{label}: {len(rows)} entr{'y' if len(rows) == 1 else 'ies'} in {a.days} days, {sessions} session(s), "
+                f"last run {last_day}, ")
         # A log whose entries carry no would_block field cannot say "0 would have blocked" - that zero
         # was one symbol for two states (audit-audit 2026-11-02: time-gate writes `anchored`, the closing
         # classifier `model.*`; both printed 0). Say it cannot count; never a quiet zero.

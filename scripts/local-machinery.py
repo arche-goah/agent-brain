@@ -1037,8 +1037,12 @@ def alpha_records(decl, repo, home, today):
     first run (measured the same evening: a `touch` by the declaring session was refused by the
     permission layer, so a record that waits for a hand may never appear), empty counts as armed -
     and must have been written within `record_days` (per alpha, else the file's
-    top-level value, else 7): a record nobody wrote for a week measures nothing or the thing it
-    waits for does not happen, and either is the question the review asks."""
+    top-level value, else 7): a record nobody wrote for a week means the instrument stopped running.
+    What this check can see is the file's mtime and nothing else: a stop-dispatcher recorder touches
+    its log on every clean run, hit or not (core #693), so an idle recorder stays fresh and "the
+    thing it waits for does not happen" is no longer visible here - that question belongs to the
+    counts in `recorder-report.py` (entries and would-block per window), not to this freshness
+    check. An instrument that writes only on a hit still goes stale while idle."""
     out = []
     try:
         now = datetime.date.fromisoformat(today)
