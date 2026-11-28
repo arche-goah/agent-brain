@@ -49,7 +49,8 @@ const CREATE_RX = /(^|[;&|(]\s*|\s)gh\s+pr\s+create\b/;
 function runs(cmd, ps, subs, verbs, rx) {
   const hit = invocations(cmd, ps, 'gh', subs, verbs);
   if (hit !== null) return hit.length > 0;
-  return String(cmd).split('\n').some((l) => {
+  // a continued line (`gh \` + `pr comment …`) is one command line here too (review of #680, 2026-11-26)
+  return (ps ? String(cmd) : String(cmd).replace(/\\\r?\n/g, ' ')).split('\n').some((l) => {
     const h = invocations(l, ps, 'gh', subs, verbs);
     return h === null ? rx.test(l) : h.length > 0;
   });
@@ -288,7 +289,10 @@ function gate(input, script) {
       if (rc) return rc;
     }
   }
-  if (!posts(cmd, ps)) return 0;
+  // a script's own comment lines are no commands, as public-text-guard reads them (review of #680, 2026-11-26, Windows:
+  // scripts/test-content-review-gate.sh was refused by hand - a backticked `env -C <clone> gh pr create` in a comment
+  // read as a command substitution)
+  if (!posts(script ? cmd.replace(/^[ \t]*#.*$/gm, '') : cmd, ps)) return 0;
   const lv = script ? [] : levelFindings(cmd, input.cwd || process.cwd(), ps);
   if (lv.length) {
     console.error('BLOCKED (instance-key-gate, change level): a changelog fragment of this PR does not declare its level.\n' +

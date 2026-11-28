@@ -99,6 +99,16 @@ printf '%s\n' '#!/usr/bin/env bash' 'cat > x.txt <<EOF' 'y' 'EOF' "$G pr comment
 probe "a script with a heredoc whose gh text is only data" "bash $(native "$SC/heredoc-data.sh")" allow
 probe "a script with a heredoc and a real post without the key (control)" "bash $(native "$SC/heredoc-post.sh")" block
 probe "a multi-line post in a script with a heredoc (control)" "bash $(native "$SC/heredoc-multi.sh")" block
+# Review of #680 (2026-11-26, Windows): a backticked gh call in a script's COMMENT line is no post (scripts/
+# test-content-review-gate.sh was refused by hand), and a `gh \` continued onto the next line is one (it passed).
+printf '%s\n' '#!/usr/bin/env bash' '# the gate reads `env -C <clone> gh pr create` as the create' 'echo ok' > "$SC/comment-tick.sh"
+printf '%s\n' '#!/usr/bin/env bash' "$G \\" '  pr comment 5 -R o/r --body "fixed"' > "$SC/cont-post.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'cat > x.txt <<EOF' 'y' 'EOF' "$G \\" '  pr comment 5 -R o/r --body "fixed"' > "$SC/cont-heredoc.sh"
+probe "a backticked gh call in a script's comment line is no post" "bash $(native "$SC/comment-tick.sh")" allow
+probe "a gh post continued onto the next line (control)" "bash $(native "$SC/cont-post.sh")" block
+probe "a continued gh post in a script with a heredoc (control)" "bash $(native "$SC/cont-heredoc.sh")" block
+probe "a continued gh post in the command itself (control)" "$G \\
+  pr comment 5 -R o/r --body fixed" block
 
 # The block message names the exact line to add (an agent must not have to guess the key).
 out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 5 --body hi"}}' \
