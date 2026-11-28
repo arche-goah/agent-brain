@@ -291,7 +291,8 @@ History: core/docs/rule-history.md, "A Needed Reload Is Not a Wait State (operat
 1. **The assignment is the measure, not the activity.**
 2. **No self-invented goals while an operator assignment is open.** Every item on an
    assignment list carries its origin (`von: Operator` | `abgeleitet` =
-   `origin: operator | derived`); derived items are **proposals** and need an OK.
+   `origin: operator | derived`); derived items are **proposals** and need an OK — for
+   new core functionality the open PR is the proposal and the content review its OK (Working Rule #11).
 3. **An empty list is a SUCCESS, not an emergency** → **report and stop** (stop = the
    work, not the session or the run mode), don't refill;
    order done → check-in with the operator. Only a scheduled time-boxed run derives follow-ups, from a **reserve pool agreed

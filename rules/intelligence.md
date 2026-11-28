@@ -157,7 +157,8 @@ ORDERED; content, structures, UI artifacts and features stay propose-not-build. 
 open PR IS the proposal** (operator corrections 2026-11-24/25, `working-rules.md` #11): a new core
 skill, gate, script or rule is built on a branch and opened as a normal PR, and the content review
 decides; "propose" above and in Knowledge Carriers #3 and the skill-first step 3 means that PR for
-the core, never a question before it. Order Fidelity #5 guards operating surfaces, not a PR branch.
+the core, never a question before it, and the OK a derived item needs (Order Fidelity #2) is that
+review. Order Fidelity #5 guards operating surfaces, not a PR branch.
 
 ## Presenting to the Operator
 
