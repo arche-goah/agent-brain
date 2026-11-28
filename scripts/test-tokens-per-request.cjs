@@ -69,6 +69,30 @@ try {
   ok('by day', () => assert.deepStrictEqual(Object.keys(measure(T, '0000-00-00', '9999-99-99', 'day').rows), ['2026-11-16', '2026-11-23']));
   ok('iso week at a year boundary', () => { assert.strictEqual(isoWeek('2026-12-31'), '2026-W53'); assert.strictEqual(isoWeek('2027-01-04'), '2027-W01'); assert.strictEqual(isoWeek('2026-01-01'), '2026-W01'); });
   ok('the headless reader: first entrypoint decides', () => { assert.strictEqual(tk.isHeadlessTranscript(path.join(T, 'h.jsonl')), true); assert.strictEqual(tk.isHeadlessTranscript(path.join(T, 'a.jsonl')), false); });
+
+  // The question tool: an answer and a refusal with the operator's own message stay inside the request that asked.
+  const Q = path.join(T, 'q');
+  const ask = (ts, id, qid) => ({ type: 'assistant', timestamp: ts, message: { id, role: 'assistant', content: [{ type: 'tool_use', id: qid, name: 'AskUserQuestion', input: {} }], usage: { input_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 1 } } });
+  const answer = (ts, qid, text, isError) => ({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: qid, content: text, ...(isError ? { is_error: true } : {}) }] } });
+  const qrecs = [
+    user('2026-11-24T09:00:00.000Z', 'request with questions'),
+    ask('2026-11-24T09:00:01.000Z', 'q1', 'toolu_q1'),
+    answer('2026-11-24T09:01:00.000Z', 'toolu_q1', 'User has answered your questions: "Go?"="Yes (Recommended)"'),
+    call('2026-11-24T09:01:01.000Z', 'q2', 10, 0, 0, 10),
+    ask('2026-11-24T09:02:00.000Z', 'q3', 'toolu_q3'),
+    answer('2026-11-24T09:03:00.000Z', 'toolu_q3', "The user doesn't want to proceed with this tool use. The user said: do the other one first", true),
+    call('2026-11-24T09:03:01.000Z', 'q4', 100, 0, 0, 100),
+    user('2026-11-24T10:00:00.000Z', 'next typed request'),
+    call('2026-11-24T10:00:01.000Z', 'q5', 5, 0, 0, 5),
+  ];
+  w(path.join(Q, 'q.jsonl'), qrecs);
+  const qr = measure(Q, '0000-00-00', '9999-99-99', 'day').rows['2026-11-24'];
+  ok('question tool: an answer and a refusal with a message open no request', () => assert.strictEqual(qr.requests, 2));
+  ok('question tool: the calls after them belong to the request that asked', () => assert.strictEqual(qr.sum_own, 2 + 20 + 2 + 200 + 10));
+  ok('question tool: the gates read the same answer as an operator word (questionAnswers), on purpose', () => {
+    const isAnswer = tk.questionAnswers();
+    assert.deepStrictEqual(qrecs.map((d) => isAnswer(d)), [false, false, true, false, false, false, false, false, false]);
+  });
   console.log(`test-tokens-per-request: ${pass} passed`);
 } finally {
   fs.rmSync(T, { recursive: true, force: true });
