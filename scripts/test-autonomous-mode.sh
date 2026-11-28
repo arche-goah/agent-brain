@@ -293,10 +293,10 @@ mode "short word: a later plain prompt keeps it (control)" "$f" "$EN" autonomous
 # interactive?" with options named after the modes; the chosen "Autonomous, go on" carried no yes-word, was read as a
 # no, and an edit behind an ask rule went to the harness dialog in a run the operator believed autonomous (376 minutes).
 # An answered question whose options are known: the AskUserQuestion input carries the labels, as in a real transcript.
-# $1 tool id, $2 timestamp ("" = none), $3 question, $4 JSON array of option labels, $5 the answer
-oanswer() { node -e 'const [id, ts, q, l, a] = process.argv.slice(1);
+# $1 tool id, $2 timestamp ("" = none), $3 question, $4 JSON array of option labels, $5 the answer, $6 "multi" = multiSelect
+oanswer() { node -e 'const [id, ts, q, l, a, m] = process.argv.slice(1);
   const options = JSON.parse(l).map((label) => ({ label, description: "" }));
-  console.log(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: "AskUserQuestion", input: { questions: [{ question: q, header: "Mode", options, multiSelect: false }] } }] } }));
+  console.log(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: "AskUserQuestion", input: { questions: [{ question: q, header: "Mode", options, multiSelect: m === "multi" }] } }] } }));
   const u = { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: `Your questions have been answered: "${q}"="${a}". You can now continue` }] } };
   if (ts) u.timestamp = ts;
   console.log(JSON.stringify(u));' "$@"; }
@@ -314,6 +314,15 @@ f="$T/ma1h.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autono
 mode "the chosen option itself still switches it on (control)" "$f" "$EN" autonomous
 f="$T/ma1i.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Interactive (Recommended)", "Autonomous"]' "Interactive (Recommended)"; } > "$f"
 mode "the option naming the other mode keeps it off (control)" "$f" "$EN" interactive
+# Round three (review of #654, Windows instance 2026-11-28): label + ", " at a SINGLE-select question is free text.
+f="$T/ma1j.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous", "Stay interactive"]' "Autonomous, but not today"; } > "$f"
+mode "single-select: a label followed by a comma and more text is free text" "$f" "$EN" interactive
+f="$T/ma1k.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous (Recommended)", "Stay interactive"]' "Autonomous (Recommended), no wait - stay here"; } > "$f"
+mode "single-select: the recommended label plus a comma and a change of mind is free text" "$f" "$EN" interactive
+f="$T/ma1l.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Push PRs on your own", "Autonomous", "Stay interactive"]' "Push PRs on your own, Autonomous" multi; } > "$f"
+mode "multi-select: the mode option chosen second switches it on" "$f" "$EN" autonomous
+f="$T/ma1m.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Push PRs on your own", "Autonomous", "Stay interactive"]' "Autonomous, but not today" multi; } > "$f"
+mode "multi-select: a comma part that is no label makes it free text (control)" "$f" "$EN" interactive
 f="$T/ma2.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Shall I work through it autonomously or stay in ask mode?"="Ask mode"'; } > "$f"
 mode "an answer that names the other mode keeps it off" "$f" "$EN" interactive
 f="$T/ma3.jsonl"; { user "anything open for me?"; answer '"Continue autonomously?"="No, not autonomously"'; } > "$f"

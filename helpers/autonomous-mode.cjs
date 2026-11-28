@@ -176,7 +176,7 @@ function asksMode(on, question) {
  * an edit behind an ask rule through to the harness dialog, and the run stood 376 minutes at it. An answer that
  * names the mode is that mode; an off-word or a leading no wins over everything.
  */
-function modeAnswer(w, answer, labels) {
+function modeAnswer(w, answer, labels, multi) {
   const a = String(answer || '');
   if (w.off.test(a) || (w.no && w.no.test(a))) return false;
   // The on-word counts only as the HEAD of an OPTION the operator chose - the option is named after the mode
@@ -185,10 +185,15 @@ function modeAnswer(w, answer, labels) {
   // false one; an on-word anywhere would have switched a run on at a design question (2026-11-18). Free text typed
   // through "Other" is no option (review of #654, Windows instance 2026-11-27: "autonomous is too risky today, stay
   // here" and "Autonomously? not yet, ask me first" switched the run on): the answer must BE one of the question's
-  // option labels from the AskUserQuestion input (or start with one, a multi-select joins them with ", ").
-  // No labels known = no option = the head rule does not apply.
-  const chosen = (labels || []).find((l) => l && (a.trim() === l.trim() || a.startsWith(`${l.trim()}, `)));
-  if (w.yes.test(a) || (chosen && w.on.test(chosen.trim().split(/\s+/)[0] || ''))) return true;
+  // option labels from the AskUserQuestion input. No labels known = no option = the head rule does not apply.
+  // Single-select: the answer equals one label. Multi-select: the harness joins the chosen labels with ", ", so every
+  // comma part must be a label and any of them may be the mode option (review of #654, Windows instance 2026-11-28:
+  // "Autonomous, but not today" typed through "Other" at a single-select question started with a label and switched
+  // the run on; a multi-select with the mode option second was missed).
+  const ls = (labels || []).map((l) => l.trim()).filter(Boolean);
+  const parts = multi ? a.split(', ').map((p) => p.trim()) : [a.trim()];
+  const chosen = ls.length && parts.every((p) => ls.includes(p)) ? parts : [];
+  if (w.yes.test(a) || chosen.some((c) => w.on.test(c.split(/\s+/)[0] || ''))) return true;
   return null;
 }
 
@@ -318,7 +323,9 @@ function promptModes(transcriptPath, cwd) {
           askIds.add(b.id);
           for (const qq of (b.input && Array.isArray(b.input.questions)) ? b.input.questions : []) {
             if (qq && typeof qq.question === 'string') {
-              labelsOf.set(qq.question, (Array.isArray(qq.options) ? qq.options : []).map((o) => (o && typeof o.label === 'string' ? o.label : '')).filter(Boolean));
+              const ls = (Array.isArray(qq.options) ? qq.options : []).map((o) => (o && typeof o.label === 'string' ? o.label : '')).filter(Boolean);
+              ls.multi = qq.multiSelect === true;   // a multi-select answer joins its labels with ", "
+              labelsOf.set(qq.question, ls);
             }
           }
         }
@@ -355,7 +362,7 @@ function promptModes(transcriptPath, cwd) {
         // between classifier and words, never toward autonomous): for an answer it can end the mode, and it can veto an
         // on-word the words would take for an order; switching on needs the words too.
         const labels = labelsOf.get(q) || [];
-        const wordsOn = asksMode(w.on, q) ? modeAnswer(w, a, labels) === true : ordersOn(w.on, a);
+        const wordsOn = asksMode(w.on, q) ? modeAnswer(w, a, labels, labels.multi) === true : ordersOn(w.on, a);
         if (wants && ia.mode_off) state = false;
         else if (wants && ia.mode_on && wordsOn) state = true;
         else if (byModel && ia.mode_on && !wordsOn) continue;   // model on, words not: no switch
