@@ -64,21 +64,10 @@ trap 'rm -rf "$LOCK"' EXIT
 moved() { [ "$(git -C "$DIR" rev-parse HEAD)" != "$head" ] || [ -n "$(git -C "$DIR" status --porcelain --untracked-files=no)" ]; }
 if moved; then echo "core-push-lint: HEAD of $DIR moved while queued (was ${head:0:7}) — run again for the new commit"; exit 2; fi
 # The fixtures a fast run owes: every changed fixture, and every fixture that names a changed file - its readers.
-# Measured 2026-11-26 on the macOS instance: a change to hooks/hooks.json ran no fixture (none of the ten suites that read
-# it was in the diff); the stamp said GREEN and CI python-floor went red in check-catalog-test.
-touched_fixtures() { # $1 repo dir, $2 base
-  local fx='^scripts/(test-[^/]*\.(sh|py|cjs)|[^/]*-test\.(sh|py|cjs))$' changed f b
-  changed="$(git -C "$1" diff --name-only --diff-filter=d "$2" HEAD)"
-  {
-    printf '%s\n' "$changed" | grep -aE "$fx"
-    printf '%s\n' "$changed" | grep -avE "$fx" | while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      b="${f##*/}"
-      case "$b" in *.md|*.txt) continue ;; esac   # docs name everything; their readers are the lint steps
-      (cd "$1" && grep -alF -- "$b" scripts/test-*.sh scripts/test-*.py scripts/test-*.cjs scripts/*-test.sh scripts/*-test.py scripts/*-test.cjs 2>/dev/null)
-    done
-  } | sort -u
-}
+# Measured 2026-11-26 on the macOS instance: a change to hooks/hooks.json ran no fixture (none of the 8 suites that read
+# it was in the diff); the stamp said GREEN and CI python-floor went red in check-catalog-test. The rule lives in ONE
+# place, shared with core-merge-lint.sh (scripts/reader-fixtures.sh).
+. "$HERE/reader-fixtures.sh"
 if [ "$FAST" -eq 1 ]; then
   out="$(cd "$DIR" && bash scripts/ci-lint-local.sh leaks lint shellcheck 2>&1)"; rc=$?
   summary="$(printf '%s\n' "$out" | grep -a 'ci-lint-local:' | tail -1)"
@@ -90,7 +79,7 @@ if [ "$FAST" -eq 1 ]; then
     case "$f" in *.py) (cd "$DIR" && "$PY" "$f" >/dev/null 2>&1) ;; *.cjs) (cd "$DIR" && node "$f" >/dev/null 2>&1) ;; *) (cd "$DIR" && bash "$f" >/dev/null 2>&1) ;; esac
     [ $? -eq 0 ] || { rc=1; out="$out
   FAIL touched fixture $f"; }
-  done < <(touched_fixtures "$DIR" "${base:-HEAD~1}")
+  done < <(reader_fixtures "$DIR" "${base:-HEAD~1}" HEAD)
   summary="$summary; $n touched fixture(s)"
   stamp="$STAMPS/$head.fast.ok"
 else

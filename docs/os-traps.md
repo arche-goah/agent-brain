@@ -389,6 +389,7 @@ known:     scripts/test-public-text-guard.sh=1
 known:     scripts/test-python-probe.sh=1
 known:     scripts/test-question-gate.sh=1
 known:     scripts/test-reader-break-check.sh=1
+known:     scripts/test-reader-fixtures.sh=1
 known:     scripts/test-recall-gate.sh=1
 known:     scripts/test-release-freeze-gate.sh=1
 known:     scripts/test-repo-activity-watch.sh=1
@@ -730,6 +731,8 @@ was not). Four must-block cases passed silently on Windows. `native()`/`cygpath 
 a fake path that must stay POSIX; `export MSYS2_ENV_CONV_EXCL=<VAR>` exempts that one variable
 and is inert on macOS/Linux. The `mktemp -d` pattern cannot see this spelling; a search for
 `[A-Z_]="/` assignments over core scripts, helpers and one instance brain found no other site.
+2026-11-28, test-reader-fixtures.sh baselined after the same review: its temp repo path reaches only git, as an
+ARGUMENT (`git -C`, which Git Bash converts), and the shell function under test - no native process reads it as data.
 
 ## OS-4 — a fixture suite exists but no OS gate runs it
 
