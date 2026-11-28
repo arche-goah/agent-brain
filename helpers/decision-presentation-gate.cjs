@@ -187,7 +187,7 @@ function judge(input) {
   if (wasOn && closeOpenEnds(root, { sessionId: input.session_id, since, calls: cmds }) === null) {
     const on = words(root).on;
     const last = calls.length ? calls[calls.length - 1] : [];
-    if (!last.length || !on.test(last[last.length - 1])) missing.push('the last question "continue autonomously?"');
+    if (!last.length || !on.test(last[last.length - 1])) missing.push('the last question "continue autonomously?" (as the mode-confirm question: header mode-confirm, interactive option last, with the short explanation)');
   }
   if (!missing.length) return null;
   const why = now.asks ? 'the operator asked what is open' : 'the autonomous run has ended';

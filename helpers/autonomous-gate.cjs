@@ -15,7 +15,8 @@
  * no other brain had.
  *
  * Mode: `autonomous-mode.cjs` (a latch: an on-word sets it; an off-word clears it; asking what is open opens a
- * window for that prompt's own turn - this hook is silent in it - and the first answered question clears the latch;
+ * window for that prompt's own turn - this hook is silent in it - where all questions and dialogs come and only the
+ * closing mode-confirm answer moves the latch (2026-11-25; before, the first answered question cleared it);
  * instance words in `.claude/rules/autonomous-patterns.json`). Outside that mode this hook is silent.
  * Ask rules: `permissions.ask` of the project's `.claude/settings.json`, `.claude/settings.local.json`
  * and the user's settings, matched the way the harness reads them: `Tool` alone matches the tool;
@@ -30,7 +31,7 @@ const fs = require('fs');
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const os = require('os');
-const { autonomousMode, promptModes, askWindow, asksMode, words } = require('./autonomous-mode.cjs');
+const { autonomousMode, promptModes, askWindow, asksMode, words, isConfirm } = require('./autonomous-mode.cjs');
 
 /** A question call that asks ONLY the mode question ("Continue autonomously?") ends the run's question round; it is
  *  no stop (2026-11-06, Windows instance: once every operator item was answered and done, the "what is open for me"
@@ -40,7 +41,8 @@ function onlyModeQuestion(toolInput, root) {
   const qs = (toolInput && toolInput.questions) || [];
   if (!qs.length) return false;
   const on = words(root).on;
-  return qs.every((q) => asksMode(on, String((q && q.question) || '')));
+  // the mode-confirm question (header `mode-confirm`, autonomous-mode.cjs) passes in an autonomous run like the mode question
+  return qs.every((q) => isConfirm(q) || asksMode(on, String((q && q.question) || '')));
 }
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
@@ -218,8 +220,12 @@ function judge(input) {
   const tool = input.tool_name || '';
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   // The mode question owed after an answered round in a dialog the operator opened (mode-owed.cjs, 2026-11-23): read
-  // before the mode check - asking what is open has just ended the run, and the work after the answers is what it holds.
+  // before the mode check - the work after the answers is what it holds, whatever the mode reads (since 2026-11-25 the run
+  // stays autonomous through the dialog until the closing mode-confirm answer).
   try { const owed = require('./mode-owed.cjs').pre(input, root); if (owed) return owed; } catch (e) { /* fail open */ }
+  // A mode word waiting for its mode-confirm answer holds the work until the question is asked (mode-confirm.cjs,
+  // operator order 2026-11-25) - in both modes: the switch it would make is exactly what is not yet decided.
+  try { const mc = require('./mode-confirm.cjs').pre(input, root); if (mc) return mc; } catch (e) { /* fail open */ }
   const notice = defaultModeNotice(input, root);
   if (notice) return notice;
   const isQuestion = tool === 'AskUserQuestion';

@@ -340,7 +340,12 @@ function siblingQuestionSets(tp, toolUseId) {
  *  distinct question (state .claude-state/question-gate-mode.json). Fails open on any read error. */
 function modeAlone(input, q) {
   let on = null; let asksMode = null;
-  try { const am = require('./autonomous-mode.cjs'); on = am.words(root(input.cwd)).on; asksMode = am.asksMode; } catch (e) { return false; }
+  try {
+    const am = require('./autonomous-mode.cjs');
+    // the mode-confirm question answers a mode word the operator just said - it never waits behind earlier answers
+    if (am.isConfirm(q)) return false;
+    on = am.words(root(input.cwd)).on; asksMode = am.asksMode;
+  } catch (e) { return false; }
   if (!on || !asksMode || !asksMode(on, String(q.question || ''))) return false;
   let lines;
   try { lines = fs.readFileSync(input.transcript_path, 'utf8').split('\n'); } catch (e) { return false; }
