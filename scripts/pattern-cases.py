@@ -198,7 +198,9 @@ def run_case(reader, kind, case, brain, work, n, env):
         if kind == "mode":
             # A case tests the WORDS, not the brain's ledger: whether an ask leaves the run depends on whether something
             # is open for the operator (2026-11-03), so the case says it - default one open item, `"open": 0` for none.
-            menv = dict(env or os.environ, AUTONOMOUS_OPEN_FOR_OPERATOR=str(case.get("open", 1)))
+            # MODE_READING=words: the reading BEFORE the mode-confirm answer (since 2026-11-25 a mode word only opens
+            # that question; autonomous-mode.cjs CONFIRM_HEADER) - a case tests how the words are read.
+            menv = dict(env or os.environ, AUTONOMOUS_OPEN_FOR_OPERATOR=str(case.get("open", 1)), MODE_READING="words")
             p = subprocess.run(["node", script, str(tp), str(brain)], capture_output=True,
                                text=True, encoding="utf-8", timeout=30, env=menv)
             got = p.stdout.strip()

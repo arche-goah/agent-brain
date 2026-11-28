@@ -40,9 +40,11 @@ interactive?"); due only after a switch from autonomous to interactive, as the l
 - **The AI keeps working** — as in interactive mode (the one law above); the run itself counts as open own work, and a
   question is no end because it is collected.
 - **When the operator asks what is open**, the operator is here for that turn: the question tool and the dialogs
-  pass in it, whatever is or is not filed as open. All collected points come as question-tool questions; the first
-  answered question switches the mode to INTERACTIVE, and the last one is "continue autonomously?" — a yes switches
-  back. A turn that has nothing to ask says so in one line and the run stays AUTONOMOUS; a later turn the operator
+  pass in it, whatever is or is not filed as open. ALL collected points come as question-tool questions, and the
+  other interactive dialogs with them; the mode stays as it is meanwhile. AFTER them comes, as the last call, the mode
+  question "continue autonomously?" — asked as the mode-confirm question (below, "Switching") — and only its answer
+  switches (operator 2026-11-25; until then the core's implementation of 2026-11-23 ended the run at the first answered
+  question). A turn that has nothing to ask says so in one line and the run stays AUTONOMOUS; a later turn the operator
   did not open (a timer, a finished background task) is outside that window again.
 
 What autonomous mode is NOT: not a permission level, not a way past an `ask` rule, not a licence for irreversible
@@ -55,9 +57,28 @@ The operator switches with words in the session — a click cannot (a status-lin
 
 | To | Built-in English words | Also |
 |---|---|---|
-| AUTONOMOUS | "autonomous(ly)", "work through it alone / on your own", "I'm away" | yes to "continue autonomously?" |
+| AUTONOMOUS | "autonomous(ly)", "work through it alone / on your own", "I'm away" | "continue autonomously?" answered as the mode-confirm question |
 | INTERACTIVE | "normal mode", "stop autonomous", "no longer autonomous" | asking what is open ("anything open for me?", "what is open?") |
 
+**Two settings, chosen per instance** (operator 2026-11-25, "provide both options"): `"mode_confirm": true` in
+`.claude/rules/autonomous-patterns.json` turns on the mode-confirm question described next; missing or `false` (the
+default) keeps the direct switch - a mode word switches at once, as before, and nothing is held. The close words and the
+ask window (all questions and dialogs, then the closing mode question) hold in both settings.
+
+**With `mode_confirm: true` the words never switch by themselves** (operator order 2026-11-25): a word above that would CHANGE the mode - read
+by the word lists or by the intent classifier - opens the mode-confirm question, and only its answer switches. Towards
+autonomous the question offers what is to be handled autonomously, with "stay interactive" always as the last option;
+towards interactive it asks "continue interactively?", the interactive option FIRST - the mode the operator's words name
+comes first (operator 2026-11-26). Where the interactive option stands is fixed when the question is ASKED (the
+mode word waiting then), and a question asked before 2026-11-26 in the old order (interactive last) is read by that
+order - the update re-reads no earlier answer. The question carries the header
+`mode-confirm` and a short explanation from this page (no extra rights; questions collected or asked at once). Until it
+is answered the mode stays as it is, and the autonomous gate holds every call but reads and the question itself
+(`helpers/mode-confirm.cjs`). A rejected question switches nothing; a word naming the mode already in force asks nothing. The mode question at the
+end of a question dialog ("continue autonomously?") takes the same form: a mode question without the header is held.
+**Closing the session is no mode switch** (operator 2026-11-25: "closing always closes"): a close word ("close the
+session", "we're done for today"; the operator's language: `close_patterns`) ends the autonomous mode at once, with no
+question.
 A remark in between ("status?", "the desk is running") keeps the mode. The operator's own language is instance data:
 `.claude/rules/autonomous-patterns.json` (`on_patterns`, `off_patterns`, `yes_patterns`, test cases in `_cases`) and the
 `ask_patterns` of `.claude/rules/open-items.json`; template `templates/rules-instance/autonomous-patterns.json`. An AI
@@ -68,6 +89,7 @@ asked "which words switch the mode here?" reads those two files of its own brain
 | Part | Carrier |
 |---|---|
 | the latch | `helpers/autonomous-mode.cjs` (`promptModes`, `autonomousMode`) |
+| a mode word only opens the mode-confirm question | `helpers/autonomous-mode.cjs` (`confirmPending`), `helpers/mode-confirm.cjs` (hold + Stop row MODE-CONFIRM) |
 | no question tool, no ask dialog | `helpers/autonomous-gate.cjs` (PreToolUse) |
 | no closing question in prose; questions only when asked | `helpers/stoppen-gate.cjs`, `helpers/decision-presentation-gate.cjs`, `helpers/question-gate.cjs` |
 | open items in the first reply / no "shall I?" in the mode | `helpers/open-items-gate.cjs` |

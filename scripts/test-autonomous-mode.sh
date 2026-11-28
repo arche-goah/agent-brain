@@ -6,6 +6,9 @@
 # through the tool — a "⚙ autonomous:" line passes there and ONLY there.
 # Usage: bash scripts/test-autonomous-mode.sh   (exit 0 = pass)
 set -u
+# These cases test how the WORDS are read (the latch before the mode-confirm answer, autonomous-mode.cjs CONFIRM_HEADER);
+# the confirmation itself: scripts/test-mode-confirm.sh.
+export MODE_READING=words
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 _D="$(cd "$(dirname "$0")" && pwd)"
@@ -54,7 +57,8 @@ mode "the same words typed by the operator switch it (control)" "$f" "$EN" auton
 f="$T/3.jsonl"; { user "autonomous, please"; asst "x"; user "status?"; asst "y"; user "back to normal mode"; } > "$f"
 mode "an off word ends it" "$f" "$EN" interactive
 # Asking what is open opens a WINDOW (2026-11-23): the run is still autonomous, and in that prompt's own turn the
-# question tool and the dialogs pass (autonomous-gate). A question answered there ends the run; a turn that asks nothing
+# question tool and the dialogs pass (autonomous-gate). Since 2026-11-25 an answered question there ends nothing - the
+# closing mode-confirm answer decides (before: the first answered question ended the run); a turn that asks nothing
 # leaves it autonomous. No count of what is filed as open decides - three incidents on the macOS instance (2026-11-05,
 # -18, -23) each failed on one more input form of that count, and the question tool was refused on the operator's request.
 f="$T/3b.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; } > "$f"
@@ -99,8 +103,11 @@ mode "yes to continue autonomously sets it again" "$f" "$EN" autonomous
 f="$T/3g.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Continue autonomously?"="No, interactive"'; } > "$f"
 mode "no to continue autonomously keeps it off" "$f" "$EN" interactive
 f="$T/3h.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Release now?"="Yes"'; } > "$f"
-mode "yes to another question sets nothing" "$f" "$EN" interactive
-mode "a question answered in the window ends the run - nothing filed as open, no count" "$f" "$NONE" interactive
+# Since 2026-11-25 (operator, question tool) an answered question in the window ends nothing: all questions and dialogs
+# come, then the closing mode-confirm question decides (test-mode-confirm.sh). Before, the core implementation of
+# 2026-11-23 ended the run here (expected: interactive).
+mode "yes to another question sets nothing - the run and its window stand" "$f" "$EN" window
+mode "a question answered in the window ends nothing - nothing filed as open, no count" "$f" "$NONE" window
 # An order inside the answer to another question counts like a prompt (macOS instance 2026-10-30).
 f="$T/3k.jsonl"; { user "status?"; answer '"Shall I handle the 42 items?"="yes, work through them autonomously. document false reports"'; } > "$f"
 mode "an autonomous order inside an answer to another question sets it" "$f" "$EN" autonomous
@@ -112,7 +119,7 @@ mode "the 'The user answered:' wording counts as an answer too" "$f" "$EN" auton
 f="$T/3l.jsonl"; { user "autonomous, please"; answer '"Shall I run the scan?"="no, back to normal mode"'; } > "$f"
 mode "an off word inside an answer to another question ends it" "$f" "$EN" interactive
 f="$T/3n.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"The autonomous gate held the settings edit back; the patch is in a file. Shall I apply it now?"="Yes, apply it now"'; } > "$f"
-mode "an on-word outside the question sentence makes no mode question (2026-10-31)" "$f" "$EN" interactive
+mode "an on-word outside the question sentence makes no mode question (2026-10-31) - the window stands (2026-11-25)" "$f" "$EN" window
 f="$T/3o.jsonl"; { user "anything open for me?"; answer '"Patch applied. Continue autonomously?"="Yes"'; } > "$f"
 mode "the on-word in the question sentence still is the mode question (control)" "$f" "$EN" autonomous
 f="$T/3i.jsonl"; { user "fix the parser"; answer '"Continue autonomously?"="Yes"'; user "status?"; } > "$f"
@@ -288,6 +295,107 @@ f="$T/sw5.jsonl"; { user "auto mode"; asst "x"; user "ask mode"; } > "$f"
 mode "short word: 'ask mode' ends the run" "$f" "$EN" interactive
 f="$T/sw6.jsonl"; { user "auto mode"; asst "x"; user "ok"; } > "$f"
 mode "short word: a later plain prompt keeps it (control)" "$f" "$EN" autonomous
+
+# 2026-11-24, macOS instance: the answer that NAMES the mode. The agent asked "work through it autonomously or stay
+# interactive?" with options named after the modes; the chosen "Autonomous, go on" carried no yes-word, was read as a
+# no, and an edit behind an ask rule went to the harness dialog in a run the operator believed autonomous (376 minutes).
+# An answered question whose options are known: the AskUserQuestion input carries the labels, as in a real transcript.
+# $1 tool id, $2 timestamp ("" = none), $3 question, $4 JSON array of option labels, $5 the answer, $6 "multi" = multiSelect
+oanswer() { node -e 'const [id, ts, q, l, a, m] = process.argv.slice(1);
+  const options = JSON.parse(l).map((label) => ({ label, description: "" }));
+  console.log(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: "AskUserQuestion", input: { questions: [{ question: q, header: "Mode", options, multiSelect: m === "multi" }] } }] } }));
+  const u = { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: `Your questions have been answered: "${q}"="${a}". You can now continue` }] } };
+  if (ts) u.timestamp = ts;
+  console.log(JSON.stringify(u));' "$@"; }
+MQ="Shall I work through it autonomously or stay interactive?"
+f="$T/ma1.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous, go on (Recommended)", "Stay interactive"]' "Autonomous, go on (Recommended)"; } > "$f"
+mode "an answer to the mode question that names the autonomous mode switches it on" "$f" "$EN" autonomous
+f="$T/ma1n.jsonl"; { user "anything open for me?"; answer "\"$MQ\"=\"Autonomous, go on (Recommended)\""; } > "$f"
+mode "the same answer with no option labels known: no chosen option, the head rule does not apply" "$f" "$EN" interactive
+# Free text typed through "Other" is no option (review of #654, Windows instance 2026-11-27): both switched the run on.
+f="$T/ma1f.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous (Recommended)", "Stay interactive"]' "autonomous is too risky today, stay here"; } > "$f"
+mode "free text that starts with the on-word is no chosen option" "$f" "$EN" interactive
+f="$T/ma1g.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous (Recommended)", "Stay interactive"]' "Autonomously? not yet, ask me first"; } > "$f"
+mode "free text with a questioning on-word is no chosen option" "$f" "$EN" interactive
+f="$T/ma1h.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous (Recommended)", "Stay interactive"]' "Autonomous (Recommended)"; } > "$f"
+mode "the chosen option itself still switches it on (control)" "$f" "$EN" autonomous
+f="$T/ma1i.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Interactive (Recommended)", "Autonomous"]' "Interactive (Recommended)"; } > "$f"
+mode "the option naming the other mode keeps it off (control)" "$f" "$EN" interactive
+# Round three (review of #654, Windows instance 2026-11-28): label + ", " at a SINGLE-select question is free text.
+f="$T/ma1j.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous", "Stay interactive"]' "Autonomous, but not today"; } > "$f"
+mode "single-select: a label followed by a comma and more text is free text" "$f" "$EN" interactive
+f="$T/ma1k.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Autonomous (Recommended)", "Stay interactive"]' "Autonomous (Recommended), no wait - stay here"; } > "$f"
+mode "single-select: the recommended label plus a comma and a change of mind is free text" "$f" "$EN" interactive
+f="$T/ma1l.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Push PRs on your own", "Autonomous", "Stay interactive"]' "Push PRs on your own, Autonomous" multi; } > "$f"
+mode "multi-select: the mode option chosen second switches it on" "$f" "$EN" autonomous
+f="$T/ma1m.jsonl"; { user "anything open for me?"; oanswer t6 "" "$MQ" '["Push PRs on your own", "Autonomous", "Stay interactive"]' "Autonomous, but not today" multi; } > "$f"
+mode "multi-select: a comma part that is no label makes it free text (control)" "$f" "$EN" interactive
+f="$T/ma2.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Shall I work through it autonomously or stay in ask mode?"="Ask mode"'; } > "$f"
+mode "an answer that names the other mode keeps it off" "$f" "$EN" interactive
+f="$T/ma3.jsonl"; { user "anything open for me?"; answer '"Continue autonomously?"="No, not autonomously"'; } > "$f"
+mode "a leading no wins over the on-word it carries" "$f" "$EN" interactive
+f="$T/ma4.jsonl"; { user "anything open for me?"; answer '"Continue autonomously?"="Later"'; } > "$f"
+mode "an answer that says neither stays on the safe side (control)" "$f" "$EN" interactive
+# The classifier's record of an ANSWER decides, the words are the fallback (the same evening: an answer about how the
+# AI may open pull requests on its own carried an on-word and switched the run on - words on, model not).
+tanswer() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t7","name":"AskUserQuestion","input":{"questions":[]}}]}}\n'
+  printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t7","content":%s}]}}\n' "$1" "$(js "Your questions have been answered: $2. You can now continue")"; }
+arec() { printf '{"at":"%s","session":"%s","mode":"answer","model":{"asks_open":false,"mode_change":%s,"mode_on":%s,"mode_off":false},"prompt":%s}\n' "$1" "$2" "$3" "$4" "$(js "Question: $5")"; }
+f="$T/sess-e.jsonl"; { tuser 2026-11-23T21:00:00Z "status?"; tanswer 2026-11-23T21:45:26Z '"May the AI open pull requests for root-cause fixes without asking?"="building and opening autonomously, with clear rules"'; } > "$f"
+arec 2026-11-23T21:45:29Z sess-e false false "May the AI open pull requests for root-cause fixes without asking?" > "$IC/.claude-state/intent-classifier.jsonl"
+mode "an on-word in an answer to another question: the model's record says no mode order" "$f" "$IC" interactive
+mode "the same answer without a record: the words decide as before (control)" "$f" "$EN" autonomous
+f="$T/sess-f.jsonl"; { tuser 2026-11-23T23:00:00Z "status?"; tanswer 2026-11-23T23:07:37Z '"Shall I work it off on my own or stay with you?"="On my own (Recommended)"'; } > "$f"
+arec 2026-11-23T23:07:39Z sess-f true true "Shall I work it off on my own or stay with you?" > "$IC/.claude-state/intent-classifier.jsonl"
+mode "model on, words not: the model alone never switches on (decision 2026-11-17)" "$f" "$IC" interactive
+# The classifier decides FIRST whether a change is intended at all (operator 2026-11-24): talk ABOUT the mode switches nothing.
+crec() { printf '{"at":"%s","session":"%s","mode":"hook","model":{"asks_open":false,"mode_change":%s,"mode_on":%s,"mode_off":%s,"correction":false}}\n' "$1" "$2" "$3" "$4" "$5"; }
+f="$T/sess-g.jsonl"; { tuser 2026-11-24T05:28:39Z "you are in interactive mode now? it was autonomous, what made you switch?"; } > "$f"
+crec 2026-11-24T05:28:43Z sess-g false true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a question about the mode: no change intended, mode_on is not applied" "$f" "$IC" interactive
+f="$T/sess-h.jsonl"; { tuser 2026-11-24T05:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-24T05:31:46Z "the mode has not been autonomous since then, analyse that properly"; } > "$f"
+{ crec 2026-11-24T05:00:03Z sess-h true true false; crec 2026-11-24T05:31:49Z sess-h false false true; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a report about the mode: no change intended, mode_off is not applied" "$f" "$IC" autonomous
+f="$T/sess-i.jsonl"; { tuser 2026-11-24T05:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-24T05:40:00Z "continue interactively"; } > "$f"
+{ crec 2026-11-24T05:00:03Z sess-i true true false; crec 2026-11-24T05:40:03Z sess-i true false true; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "an intended change is applied (control)" "$f" "$IC" interactive
+# --why / --trace: the value comes with its history; the bare call stays one word.
+got="$(node "$M" "$(native "$T/sess-i.jsonl")" "$(native "$IC")" --trace)"
+[ "$(printf '%s\n' "$got" | wc -l | tr -d ' ')" = 3 ] && printf '%s' "$got" | grep -aq 'T05:40:00Z -> interactive by the operator.s prompt (read by model): "continue interactively"' \
+  && ok "--trace lists both switches with time, reader and text" || bad "--trace: $got"
+got="$(node "$M" "$(native "$T/sess-i.jsonl")" "$(native "$IC")" --why)"
+printf '%s' "$got" | grep -aq '^last switch: .* -> interactive .* (2 switch(es) in this session' && ok "--why names the last switch and the count" || bad "--why: $got"
+
+# A matched answer record that does not read mode_on vetoes the words' on at the mode question (review of #654, Windows
+# instance 2026-11-27: "Autonomous (Recommended)" with a record mode_on:false read autonomous). Cwd with a space.
+ICS="$T/int sp"; mkdir -p "$ICS/.claude-state"
+f="$T/sess-j.jsonl"; { tuser 2026-11-27T10:00:00Z "status?"; oanswer t5 2026-11-27T10:05:00Z "$MQ" '["Autonomous (Recommended)", "Stay interactive"]' "Autonomous (Recommended)"; } > "$f"
+arec 2026-11-27T10:05:02Z sess-j false false "$MQ" > "$ICS/.claude-state/intent-classifier.jsonl"
+mode "mode question, option names autonomous, record mode_change:false mode_on:false: no switch on" "$f" "$ICS" interactive
+arec 2026-11-27T10:05:02Z sess-j true false "$MQ" > "$ICS/.claude-state/intent-classifier.jsonl"
+mode "mode question, option names autonomous, record mode_change:true mode_on:false: no switch on" "$f" "$ICS" interactive
+arec 2026-11-27T10:05:02Z sess-j true true "$MQ" > "$ICS/.claude-state/intent-classifier.jsonl"
+mode "model and words agree on on: it switches on (control)" "$f" "$ICS" autonomous
+: > "$ICS/.claude-state/intent-classifier.jsonl"
+mode "no record: the chosen option decides (control)" "$f" "$ICS" autonomous
+
+# --why ends with the value it explains (review of #654, Windows instance 2026-11-27): this session's close stamp
+# after the order is a switch of its own; the bare value and the last switch agree.
+CL2="$T/close2"; mkdir -p "$CL2/.claude-state"
+f="$T/sess-k.jsonl"; { userAt "2026-01-01T10:00:00Z" "work through the list autonomously"; asst "x"; } > "$f"
+printf 'sess-k\n- close\n' > "$CL2/.claude-state/session-close.stamp"
+got="$(node "$M" "$(native "$f")" "$(native "$CL2")" --why)"
+[ "$(printf '%s\n' "$got" | head -1)" = interactive ] && printf '%s' "$got" | grep -aq "^last switch: .* -> interactive by this session's close (read by close stamp)" \
+  && ok "--why after the close: the close is the last switch, same verdict as the value" || bad "--why after close: $got"
+got="$(node "$M" "$(native "$f")" "$(native "$CL2")" --trace)"
+case "$(printf '%s\n' "$got" | tail -1)" in *" -> interactive by this session's close "*) ok "--trace after the close ends with the close";; *) bad "--trace after close: $got";; esac
+# The ask window: since #672 a question answered in the asking turn leaves the mode standing (operator 2026-11-25: all
+# questions first, then the closing mode question decides); --why must end with the value either way (#654's case,
+# adapted when #654's head bf1100f was merged into #672).
+f="$T/aw1.jsonl"; { userAt "2026-01-01T10:00:00Z" "autonomous, please"; userAt "2026-01-01T10:10:00Z" "anything open for me?"; answer '"Release now?"="Yes"'; } > "$f"
+got="$(node "$M" "$(native "$f")" "$(native "$NONE")" --why)"
+[ "$(printf '%s\n' "$got" | head -1)" = autonomous ] && printf '%s' "$got" | grep -aq '^last switch: .* -> autonomous ' \
+  && ok "--why after a question answered in the ask window ends like the value (the mode stands, #672)" || bad "--why ask window: $got"
 
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }

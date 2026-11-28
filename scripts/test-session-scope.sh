@@ -7,6 +7,8 @@
 # The operator sets the scope by an ORDINARY TYPED MESSAGE (operator 2026-11-23); nothing the AI writes sets it.
 # Usage: bash scripts/test-session-scope.sh   (exit 0 = pass)
 set -u
+# The mode is set by its words here (the latch before the mode-confirm answer); the confirmation: test-mode-confirm.sh.
+export MODE_READING=words
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 _D="$(cd "$(dirname "$0")" && pwd)"

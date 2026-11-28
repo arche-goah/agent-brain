@@ -46,7 +46,7 @@ const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, que
 // A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
 const { isGitPush } = require('./git-push.cjs');
 const { answerHalves } = require('./published-text.cjs');
-const { intents, intentFor } = require('./autonomous-mode.cjs');
+const { intents, intentFor, intentExact } = require('./autonomous-mode.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -233,11 +233,19 @@ process.stdin.on('end', () => {
     const m = s.match(condition);
     if (m) { hit = { sentence: s, word: m[0] }; break; }
   }
-  // The prompt classifier's record decides too, in the safe direction (2026-10-30, macOS instance: "after #217 and
-  // #195", in the operator's language, passed the word list). It can only add a check, never waive one.
-  if (!hit) {
-    const intent = intentFor(intents(input.transcript_path, cwd), seen.operatorAt);
-    if (intent && intent.condition) hit = { sentence: stripQuoted(seen.operator).replace(/\s+/g, ' ').trim(), word: 'the prompt classifier read a condition', classifier: true };
+  // A classifier record of THIS prompt decides, in both directions; the words decide only without one (operator
+  // decision 2026-11-26, question tool: "Ja, erst messen, dann bauen"). Measured the same day on the macOS instance,
+  // 5730 records: the words read a condition 794 times, the model agreed 172 times; blind hand judgement of 40
+  // disagreements: words-only 0 of 20 real conditions, model-only 9 of 20. Before, the model could only add a hold
+  // (2026-10-30: "after #217 and #195" in the operator's language passed the word list), and 82 of 115 holds in 14
+  // days were passed by marker.
+  // Waive only on the record of exactly this prompt (intentExact); a hold may come from the looser match (intentFor).
+  const list = intents(input.transcript_path, cwd);
+  const own = intentExact(list, seen.operatorAt, seen.operator);
+  if (own && own.condition === false) return allow();
+  const intent = own || intentFor(list, seen.operatorAt, seen.operator);
+  if (intent && intent.condition === true && !hit) {
+    hit = { sentence: stripQuoted(seen.operator).replace(/\s+/g, ' ').trim(), word: 'the prompt classifier read a condition', classifier: true };
   }
   if (!hit) return allow();
   // The line may also stand in the call itself (a `# CONDITION-NONE: …` comment in the command,

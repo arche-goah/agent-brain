@@ -2,6 +2,8 @@
 # Fixture for helpers/mode-log.cjs: the mode a turn ends in is written as a fact, through the real
 # stop-dispatcher as a `mode: record` check. Usage: bash scripts/test-mode-log.sh   (exit 0 = pass)
 set -u
+# The mode is set by its words here (the latch before the mode-confirm answer); the confirmation: test-mode-confirm.sh.
+export MODE_READING=words
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 _D="$(cd "$(dirname "$0")" && pwd)"

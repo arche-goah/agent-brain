@@ -5,6 +5,8 @@
 # a CI notification ended on a status report while own items stayed open, a watcher still running.
 # Usage: bash scripts/test-autonomous-idle-gate.sh   (exit 0 = pass)
 set -u
+# The mode is set by its words here (the latch before the mode-confirm answer); the confirmation: test-mode-confirm.sh.
+export MODE_READING=words
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 _D="$(cd "$(dirname "$0")" && pwd)"
@@ -122,10 +124,12 @@ printf -- '- 2026-11-01 close of sess-x\n  open end: arche-goah/agent-brain #267
 printf 'sess-x\n- 2026-11-01 close of sess-x\n' > "$C/.claude-state/session-close.stamp"
 f="$T/close1.jsonl"; { user "work through the open points autonomously"; tsuser "2000-01-01T00:00:00Z" "close the session"; precommit; asst "Session closed. You can shut down."; } > "$f"
 check "a session close with this turn's stamp ends the run" "$f" allow "$C"
-f="$T/close2.jsonl"; { user "work through the open points autonomously"; tsuser "2000-01-01T00:00:00Z" "close the session"; asst "Session closed. You can shut down."; } > "$f"
+# Since 2026-11-25 a close word itself ends the run (autonomous-mode.cjs BUILTIN_CLOSE: "closing always closes"); the two
+# controls below therefore run on a prompt that is no close word - what they test is that the STAMP, not a text, closes.
+f="$T/close2.jsonl"; { user "work through the open points autonomously"; tsuser "2000-01-01T00:00:00Z" "go on with the list"; asst "Session closed. You can shut down."; } > "$f"
 check "a closing text without the pre-commit call is no close (control)" "$f" block "$C"
 rm "$C/.claude-state/session-close.stamp"
-f="$T/close3.jsonl"; { user "work through the open points autonomously"; tsuser "2000-01-01T00:00:00Z" "close the session"; precommit; asst "Session closed."; } > "$f"
+f="$T/close3.jsonl"; { user "work through the open points autonomously"; tsuser "2000-01-01T00:00:00Z" "go on with the list"; precommit; asst "Session closed."; } > "$f"
 check "the pre-commit call without a stamp file is no close (control)" "$f" block "$C"
 
 # INTERACTIVE, released work (operator decision 2026-11-02, macOS instance): an interactive turn closed on "Next:
