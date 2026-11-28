@@ -62,6 +62,11 @@ grep -q "CLAUDE.md:5" <<<"$out" && bad "a German date clause without instance da
 printf '{"date_words": ["\\\\bALPHA bis\\\\b"]}\n' > "$TMP/brain/.claude/rules/pending-clauses.json"
 out=$("$PY" "$HERE/pending-clauses.py" --repo "$TMP/brain" --core "$TMP/core" --today 2026-10-31 2>&1)
 grep -q "EXPIRED CLAUDE.md:5" <<<"$out" && ok "a German date clause found with instance date_words" || bad "a German date clause found with instance date_words (got: $out)"
+grep -q "waits.json" <<<"$out" && ok "own_date_readers unset: the file is still read" || bad "own_date_readers unset: the file is still read (got: $out)"
+printf '{"own_date_readers": ["waits.json"]}\n' > "$TMP/brain/.claude/rules/pending-clauses.json"
+out=$("$PY" "$HERE/pending-clauses.py" --repo "$TMP/brain" --core "$TMP/core" --today 2026-10-31 2>&1)
+grep -q "waits.json" <<<"$out" && bad "a file the instance names in own_date_readers is left to its reader" || ok "a file the instance names in own_date_readers is left to its reader"
+grep -q "EXPIRED CLAUDE.md:2" <<<"$out" && ok "own_date_readers leaves every other file read" || bad "own_date_readers leaves every other file read (got: $out)"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "pending-clauses-test: all checks passed"; exit 0; fi

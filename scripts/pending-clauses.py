@@ -20,7 +20,8 @@ Second kind (2026-10-31): a condition on a DATE — "until 2026-10-24", `"until"
 "expires 2026-11-07". Measured on an instance's coherence scan 2026-10-25: a waiting line past its
 date stood in a rule file, read as current. A date word followed by an ISO date before today is
 EXPIRED. Files that carry their own dated reader are left to it (local-machinery.json — alpha
-expiry in `local-machinery.py`; open-items.json — waiting lines in `open-items.py`).
+expiry in `local-machinery.py`; open-items.json — waiting lines in `open-items.py`); an instance adds its own
+such files by name as `"own_date_readers": ["<file name>", ...]` in its pending-clauses.json.
 
 Patterns: English built in; other languages are instance data in
 `.claude/rules/pending-clauses.json` ({"patterns": ["<regex>", ...], "date_words": ["<regex>", ...]},
@@ -122,6 +123,9 @@ def main():
     pats = load_patterns(repo)
     datep = load_date_pattern(repo)
     today = a.today or datetime.date.today().isoformat()
+    # an instance names its own files whose dates a gate of its own already reads (e.g. a gate that skips an entry past
+    # its "until" and keeps it as replay data): listing those as EXPIRED at every start was noise, measured 2026-11-28
+    own_readers = OWN_DATE_READER | {n for n in instance_data(repo).get("own_date_readers", []) if isinstance(n, str)}
     cache, stale, unread, expired = {}, [], [], []
     for f in rule_files(repo):
         try:
@@ -130,7 +134,7 @@ def main():
             continue
         rel = f.relative_to(repo).as_posix()
         for i, line in enumerate(lines, 1):
-            if f.name not in OWN_DATE_READER:
+            if f.name not in own_readers:
                 past = sorted({d for d in datep.findall(line) if d < today})
                 if past:
                     expired.append(f"  EXPIRED {rel}:{i} — condition date {', '.join(past)} is past: {line.strip()[:110]}")
