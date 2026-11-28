@@ -65,8 +65,21 @@ grep -q "EXPIRED CLAUDE.md:5" <<<"$out" && ok "a German date clause found with i
 grep -q "waits.json" <<<"$out" && ok "own_date_readers unset: the file is still read" || bad "own_date_readers unset: the file is still read (got: $out)"
 printf '{"own_date_readers": ["waits.json"]}\n' > "$TMP/brain/.claude/rules/pending-clauses.json"
 out=$("$PY" "$HERE/pending-clauses.py" --repo "$TMP/brain" --core "$TMP/core" --today 2026-10-31 2>&1)
-grep -q "waits.json" <<<"$out" && bad "a file the instance names in own_date_readers is left to its reader" || ok "a file the instance names in own_date_readers is left to its reader"
+grep -q "EXPIRED .claude/rules/waits.json" <<<"$out" && bad "a file the instance names in own_date_readers is left to its reader" || ok "a file the instance names in own_date_readers is left to its reader"
 grep -q "EXPIRED CLAUDE.md:2" <<<"$out" && ok "own_date_readers leaves every other file read" || bad "own_date_readers leaves every other file read (got: $out)"
+grep -q "left to their own reader (own_date_readers): waits.json" <<<"$out" && ok "the report names what it left out" || bad "the report names what it left out (got: $out)"
+# review of #700 (Windows instance 2026-11-28): a same-named file in a subfolder is still read; a wrong value never crashes
+mkdir -p "$TMP/brain/.claude/rules/sub"; printf '{"x": {"until": "2026-10-24"}}\n' > "$TMP/brain/.claude/rules/sub/waits.json"
+out=$("$PY" "$HERE/pending-clauses.py" --repo "$TMP/brain" --core "$TMP/core" --today 2026-10-31 2>&1)
+grep -q "EXPIRED .claude/rules/sub/waits.json" <<<"$out" && ok "a same-named file in a subfolder is still read" || bad "a same-named file in a subfolder is still read (got: $out)"
+printf '{"own_date_readers": ["sub/waits.json", "nope.json"]}\n' > "$TMP/brain/.claude/rules/pending-clauses.json"
+out=$("$PY" "$HERE/pending-clauses.py" --repo "$TMP/brain" --core "$TMP/core" --today 2026-10-31 2>&1)
+grep -q "sub/waits.json:1" <<<"$out" && bad "a path entry leaves exactly that file to its reader" || ok "a path entry leaves exactly that file to its reader"
+grep -q "nope.json" <<<"$out" && ok "a name that matches no file is warned" || bad "a name that matches no file is warned (got: $out)"
+printf '{"own_date_readers": null, "patterns": 7, "date_words": "x"}\n' > "$TMP/brain/.claude/rules/pending-clauses.json"
+out=$("$PY" "$HERE/pending-clauses.py" --repo "$TMP/brain" --core "$TMP/core" --today 2026-10-31 2>&1); rc=$?
+[ "$rc" -eq 0 ] && grep -q "EXPIRED CLAUDE.md:2" <<<"$out" && ok "null or wrong types: exit 0 and the report still stands" || bad "null or wrong types (rc=$rc: $out)"
+rm -rf "$TMP/brain/.claude/rules/sub"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "pending-clauses-test: all checks passed"; exit 0; fi

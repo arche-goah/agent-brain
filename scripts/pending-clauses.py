@@ -21,7 +21,8 @@ Second kind (2026-10-31): a condition on a DATE — "until 2026-10-24", `"until"
 date stood in a rule file, read as current. A date word followed by an ISO date before today is
 EXPIRED. Files that carry their own dated reader are left to it (local-machinery.json — alpha
 expiry in `local-machinery.py`; open-items.json — waiting lines in `open-items.py`); an instance adds its own
-such files by name as `"own_date_readers": ["<file name>", ...]` in its pending-clauses.json.
+such files as `"own_date_readers": ["<path under .claude/rules>", ...]` in its pending-clauses.json (a bare
+name = a file at the top of .claude/rules); the report names what it left out, a name that matches no file is warned.
 
 Patterns: English built in; other languages are instance data in
 `.claude/rules/pending-clauses.json` ({"patterns": ["<regex>", ...], "date_words": ["<regex>", ...]},
@@ -68,13 +69,20 @@ def instance_data(repo):
     return {}
 
 
+def instance_list(repo, key):
+    """One reader for every instance list: a missing key, null or another type is an empty list, never a traceback
+    (review of #700, 2026-11-28: `"own_date_readers": null` crashed the report and brain-update said nothing)."""
+    v = instance_data(repo).get(key)
+    return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+
+
 def load_patterns(repo):
-    pats = list(BUILTIN) + [p for p in instance_data(repo).get("patterns", []) if isinstance(p, str)]
+    pats = list(BUILTIN) + instance_list(repo, "patterns")
     return [re.compile(p, re.IGNORECASE) for p in pats]
 
 
 def load_date_pattern(repo):
-    words = DATE_WORDS + [w for w in instance_data(repo).get("date_words", []) if isinstance(w, str)]
+    words = DATE_WORDS + instance_list(repo, "date_words")
     # the word, then (within a few characters: quotes, a colon, "on") an ISO date
     return re.compile(r"(?:" + "|".join(words) + r")[\"':\s]{0,6}(?:on\s+)?(\d{4}-\d{2}-\d{2})", re.IGNORECASE)
 
@@ -125,16 +133,28 @@ def main():
     today = a.today or datetime.date.today().isoformat()
     # an instance names its own files whose dates a gate of its own already reads (e.g. a gate that skips an entry past
     # its "until" and keeps it as replay data): listing those as EXPIRED at every start was noise, measured 2026-11-28
-    own_readers = OWN_DATE_READER | {n for n in instance_data(repo).get("own_date_readers", []) if isinstance(n, str)}
-    cache, stale, unread, expired = {}, [], [], []
-    for f in rule_files(repo):
+    # An entry with a "/" is a path under .claude/rules, otherwise a file name there at the top level - a same-named file
+    # in a subfolder is still read (review of #700: `sub/waits.json` dropped out too). Left-out files are named.
+    own = set(instance_list(repo, "own_date_readers"))
+    rules = repo / ".claude" / "rules"
+    files = rule_files(repo)
+    under = {f: f.relative_to(rules).as_posix() for f in files if f.is_relative_to(rules)}
+    left_to_reader = lambda f: f.name in OWN_DATE_READER or under.get(f) in own   # noqa: E731
+    for n in sorted(own - set(under.values())):
+        print(f"pending-clauses: own_date_readers names {n!r}, no such file under .claude/rules - nothing left out",
+              file=sys.stderr)
+    cache, stale, unread, expired, left = {}, [], [], [], []
+    for f in files:
         try:
             lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             continue
         rel = f.relative_to(repo).as_posix()
+        mine = left_to_reader(f)
+        if mine and f.name not in OWN_DATE_READER:
+            left.append(under[f])
         for i, line in enumerate(lines, 1):
-            if f.name not in own_readers:
+            if not mine:
                 past = sorted({d for d in datep.findall(line) if d < today})
                 if past:
                     expired.append(f"  EXPIRED {rel}:{i} — condition date {', '.join(past)} is past: {line.strip()[:110]}")
@@ -160,6 +180,8 @@ def main():
     print(f"pending clauses against the pinned core ({tag}) and today ({today}):")
     for l in expired + stale + unread:
         print(l)
+    if left:
+        print(f"  left to their own reader (own_date_readers): {', '.join(sorted(left))}")
     print(f"pending-clauses: {len(expired)} expired, {len(stale)} stale, {len(unread)} to read — turn each into the "
           f"measured state or drop the condition (the rule's wording is the instance's)")
     return 0
