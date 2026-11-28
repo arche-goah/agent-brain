@@ -467,6 +467,15 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: ci-watch inside until still blocks" Bash command "until bash core/scripts/ci-watch.sh pr o/r 5; do :; done" block
   tr_probe "mechanism-guard/core rule: wait script by bare path still blocks" Bash command "core/scripts/wait-mcp-reconnect.sh td" block
   tr_probe "mechanism-guard/core rule: wait script with an env prefix still blocks" Bash command "X=1 bash core/scripts/wait-link.sh sw1" block
+  # 2026-11-28 (macOS instance): `S=<path>/ci-watch.sh; grep -n "..." $S` was held as running a waiting script - the
+  # path prefix `[^\s()]*/` swallowed `S=/.../scripts/`. A variable ASSIGNMENT of the path runs nothing.
+  tr_probe "mechanism-guard/core rule: a watch script's path assigned to a variable, then read" Bash command 'S=/tmp/x/scripts/ci-watch.sh; grep -n "A GREEN/RED is taken over\|A GREEN or RED is taken over" $S' allow
+  tr_probe "mechanism-guard/core rule: a wait script's path assigned, then read" Bash command 'W=/tmp/x/scripts/wait-link.sh; wc -l $W' allow
+  tr_probe "mechanism-guard/core rule: the lint mirror's path assigned, then read" Bash command 'L=/tmp/x/scripts/ci-lint-local.sh; head -5 $L' allow
+  tr_probe "mechanism-guard/core rule: the push lint's path assigned, then read" Bash command 'L=/tmp/x/scripts/core-push-lint.sh; sed -n 1,20p $L' allow
+  tr_probe "mechanism-guard/core rule: an env prefix before bash x-watch.sh still blocks" Bash command "VAR=x bash core/scripts/collab-watch.sh" block
+  tr_probe "mechanism-guard/core rule: CI_WATCH_SHA before bash ci-watch.sh pr still blocks" Bash command "CI_WATCH_SHA=abc1234 bash core/scripts/ci-watch.sh pr o/r 5" block
+  tr_probe "mechanism-guard/core rule: an env prefix before the lint mirror still blocks" Bash command "X=1 bash scripts/ci-lint-local.sh lint" block
   # The third foreground rule of the same shape (2026-10-28): a grep in the lint script and a test
   # string naming it were refused as "running the local CI mirror".
   tr_probe "mechanism-guard/core rule: grep in ci-lint-local.sh" Bash command "grep -n PY scripts/ci-lint-local.sh" allow
@@ -541,6 +550,9 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: CI poll loop around ci-watch.sh (control)" Monitor command "until bash core/scripts/ci-watch.sh pr o/r 5; do sleep 60; done" allow
   tr_probe "mechanism-guard/core rule: waiting script with output thrown away" Monitor command "bash core/scripts/shared-memory-watch.sh watch 300 > /dev/null" block
   tr_probe "mechanism-guard/core rule: waiting script armed with &" Bash command "bash core/scripts/wait-mcp-reconnect.sh td &" block
+  # 2026-11-28: the '&' / '>/dev/null' rule had no env-prefix group - `X=1 bash x-watch.sh > /dev/null` passed it
+  tr_probe "mechanism-guard/core rule: env prefix, waiting script with output thrown away" Monitor command "X=1 bash core/scripts/shared-memory-watch.sh watch 300 > /dev/null" block
+  tr_probe "mechanism-guard/core rule: a watch script's path assigned, a read thrown away (control)" Monitor command 'S=/tmp/x/scripts/collab-watch.sh; grep -q x $S > /dev/null' allow
   tr_probe "mechanism-guard/core rule: CI status cut by tail" Bash command "gh pr checks 5 -R o/r | tail -3" block
   tr_probe "mechanism-guard/core rule: run list cut by head" Bash command "gh run list -R o/r --workflow CI | head -2" block
   tr_probe "mechanism-guard/core rule: heredoc fed to python" Bash command 'python3 - <<EOF\nprint(1)\nEOF' block
