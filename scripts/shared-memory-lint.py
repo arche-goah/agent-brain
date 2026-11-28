@@ -356,7 +356,9 @@ def unquote(v: str) -> str:
     off `Alex 2026-11-25: "..."` and the opening one off `"..." (Alex, 2026-11-25)`, so check 9b called both
     evidence values "without evidence" although shared-memory-post.py had accepted them."""
     if len(v) >= 2 and v[0] == v[-1] == '"':
-        return re.sub(r'\\(["\\])', r"\1", v[1:-1])
+        # \n \r \t too: shared-memory-post.py escapes control characters, so no raw CR splits the line here
+        return re.sub(r'\\(["\\nrt])', lambda m: {"n": "\n", "r": "\r", "t": "\t"}.get(m.group(1), m.group(1)),
+                      v[1:-1])
     if len(v) >= 2 and v[0] == v[-1] == "'":
         return v[1:-1].replace("''", "'")
     return v
@@ -628,15 +630,33 @@ HOLLOW_ONE_MACHINE = re.compile(
     r"|^\s*an?\s+(?:windows|macos|mac|linux)\s+check\b", re.I)
 
 
+# The one definition of the evidence FORMS (9b here, and shared-memory-post.py before it writes): a URL, a file
+# path[:line] - POSIX or Windows (`C:\...`, `C:/...`), no spaces -, or the operator's quoted words with their date.
+# The post checks the file exists on top; the lint cannot (it does not know the writer's working directory).
+# Windows review of #694 (2026-11-26): the two had their own path rules, and an absolute Windows path or a path with
+# a space was accepted at the post and refused here. A path with a space is refused at the post now, with the reason.
+EVIDENCE_PATH = re.compile(r"(?:[A-Za-z]:[\\/])?[\w./\\-]+\.\w+(?::\d+)?$")
+
+
+def evidence_kind(ev: str) -> str:
+    """'url', 'path', 'quote', or '' (no evidence form). One reader for the post and the lint."""
+    ev = (ev or "").strip()
+    if re.match(r"https?://\S+$", ev):
+        return "url"
+    if EVIDENCE_PATH.match(ev):
+        return "path"
+    if re.search(r"[\"„“'«].{3,}[\"“”'»]", ev) and re.search(r"\b20\d\d-\d\d-\d\d\b", ev):
+        return "quote"
+    return ""
+
+
 def one_machine_findings(f: dict, where: str, reason: str, evidence: str) -> None:
     """9b. `one-machine:` names more than the OS, and `one-machine-evidence:` is a URL, a path or the operator's
-    dated quote (the same forms shared-memory-post.py accepts; the file itself is checked there, at writing)."""
+    dated quote (`evidence_kind`, the same forms shared-memory-post.py accepts; the file itself is checked there)."""
     if HOLLOW_ONE_MACHINE.search(reason):
         f["audience"].append({"where": where, "issue": "one-machine reason names only the OS", "reason": reason,
                               "fix": "address os:<os> - any machine of that OS fits this reason"})
-    ev = evidence.strip()
-    ok = bool(re.match(r"https?://\S+$", ev) or re.match(r"[\w./-]+\.\w+(?::\d+)?$", ev)
-              or (re.search(r"[\"„“'«].{3,}[\"“”'»]", ev) and re.search(r"\b20\d\d-\d\d-\d\d\b", ev)))
+    ok = bool(evidence_kind(evidence))
     if not ok:
         f["audience"].append({"where": where, "issue": "request to one machine without evidence",
                               "fix": "one-machine-evidence: a URL, a file path[:line], or the operator's quoted "

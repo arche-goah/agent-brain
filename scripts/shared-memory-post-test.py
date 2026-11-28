@@ -232,6 +232,50 @@ def main() -> int:
             check(f"a dated quote the post accepts ({n} form) passes the lint, read back unchanged",
                   r.returncode == 0 and not f["audience"] and meta.get("one-machine-evidence") == ev,
                   f"{r.stdout}{r.stderr} meta={meta} findings={f['audience']}")
+        # Windows review of #694 (2026-11-26): ONE definition of the evidence forms. A file the post accepts the
+        # lint accepts; an existing file whose path the lint cannot take (a space) is refused at the post, saying why.
+        (repo / "core" / "evidence-note.md").write_text("x\n", encoding="utf-8")
+        (repo / "core" / "evidence note.md").write_text("x\n", encoding="utf-8")
+        for n, ev, want in [("plain path", "core/evidence-note.md:3", 0), ("path with a space", "core/evidence note.md", 1)]:
+            r = post(repo, "request", "--area", "core", "--to", "alex-win", "--title", f"One machine file {n}",
+                     "--body", "Please counter-check on Windows: only this box has the device.",
+                     "--one-machine", "the USB device sits at this box", "--one-machine-evidence", ev, me="alex-mac")
+            slug = n.replace(" ", "-")
+            p = repo / "core" / f"request-one-machine-file-{slug}-{STATE}.md"
+            meta = (sml.frontmatter(p.read_text(encoding="utf-8")) or {}).get("metadata", {}) if p.is_file() else {}
+            f = {"audience": []}
+            sml.one_machine_findings(f, n, "the USB device sits at this box", ev)
+            if want == 0:
+                check("an existing file path the post accepts passes the lint, read back unchanged",
+                      r.returncode == 0 and not f["audience"] and meta.get("one-machine-evidence") == ev,
+                      f"{r.stdout}{r.stderr} findings={f['audience']}")
+            else:
+                check("an existing file whose path the lint refuses is refused at the post, naming the space",
+                      r.returncode != 0 and "space" in (r.stdout + r.stderr) and f["audience"] and not p.exists(),
+                      f"{r.stdout}{r.stderr} findings={f['audience']}")
+        check("Windows path forms are path evidence for both (drive with backslash or slash, :line)",
+              all(sml.evidence_kind(e) == "path" for e in
+                  ("C:\\Tools\\proof-é.md", "C:/Tools/proof.md:3", "core/evidence-note.md")),
+              str([sml.evidence_kind(e) for e in ("C:\\Tools\\proof-é.md", "C:/Tools/proof.md:3")]))
+        # A raw CR (a pasted Windows line) never reaches the file: dropped at the ends, refused inside, and the
+        # quoting escapes control characters that the lint's reader resolves.
+        r = post(repo, "request", "--area", "core", "--to", "alex-win", "--title", "One machine trailing cr",
+                 "--body", "Please counter-check on Windows: only this box has the device.",
+                 "--one-machine", "the USB device sits at this box",
+                 "--one-machine-evidence", 'Alex 2026-11-25: "keep the desk on this box"\r', me="alex-mac")
+        p = repo / "core" / f"request-one-machine-trailing-cr-{STATE}.md"
+        raw = p.read_bytes() if p.is_file() else b""
+        meta = (sml.frontmatter(raw.decode("utf-8")) or {}).get("metadata", {}) if raw else {}
+        check("a trailing CR is dropped: no raw CR in the file, the value reads back whole",
+              r.returncode == 0 and b"\r" not in raw
+              and meta.get("one-machine-evidence") == 'Alex 2026-11-25: "keep the desk on this box"',
+              f"{r.stdout}{r.stderr} meta={meta}")
+        r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "two\rlines", "--body", "x",
+                 me="alex-mac")
+        check("a line break inside a one-line field is refused", r.returncode != 0 and "one line" in r.stdout + r.stderr,
+              r.stdout + r.stderr)
+        check("the lint's reader resolves the escapes the post writes (\\r \\n \\t, and \\\\n stays a backslash-n)",
+              sml.unquote('"a\\rb\\nc\\td\\\\n\\"e"') == 'a\rb\nc\td\\n"e', repr(sml.unquote('"a\\rb\\nc\\td\\\\n\\"e"')))
         check("the LOG line carries the one-machine reason too (the lint reads it there)",
               f"core/request-one-machine-check-{STATE}.md · one-machine: the USB device sits at this box"
               in (repo / "core" / "LOG.md").read_text(encoding="utf-8"))
