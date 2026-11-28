@@ -39,7 +39,11 @@
  * CHECK 4 — `gh pr merge`: the thread (comments and review bodies) holds a content review by an instance
  *   OTHER than the author's (key in the body; a body without a key accepts any keyed review) whose `Model:`
  *   is at least the review minimum. A merge train PR (body opens with `## Merge train`) is checked per
- *   member listed as `- #<n>`.
+ *   member listed as `- #<n>`. VERDICT (2026-11-27, the macOS instance): per reviewing key the latest content review
+ *   decides, and one whose `Verdict:` line says not OK / changes needed / blocked / request changes does not count
+ *   (two open PRs carried such a verdict at their heads and would have passed). No Verdict line = counts as before.
+ *   Round three (2026-11-28, the Windows instance): the LAST verdict line outside fences and quotes is read, the
+ *   negative words widened (changes requested/required, not okay, not-OK), and across keys the newer side wins.
  * Override, said in the call: `# CONTENT-REVIEW-OK: <why>` (a repo with no second reviewer, a pure data
  * PR) — it goes to the change log like every marker.
  *
@@ -124,16 +128,54 @@ function prRisk(pr) {
   return Math.max(declared(pr.body), floor(files).risk, 0);
 }
 
-/** Does the PR thread hold a content review by another instance, on a model the risk allows? */
+/** A review's `Verdict:` line (trimmed), or null when it has none. The LAST such line outside fenced code blocks and
+ * outside `>` quotes: the form puts the verdict at the end, and a quoted earlier verdict, a probe input listed in Gaps
+ * or a form template in a fence above it is not this review's conclusion (Windows review of #697, 2026-11-28: the
+ * first match held an OK review on a quoted `> Verdict: changes needed` and passed a not OK under a fenced template).
+ * `Verdict - not OK` (a dash for the colon) counts as a verdict line too. */
+function verdictLine(text) {
+  let fence = null, last = null;
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const f = /^\s*(`{3,}|~{3,})/.exec(raw);
+    if (f) { if (!fence) fence = f[1][0]; else if (f[1][0] === fence) fence = null; continue; }
+    if (fence) continue;
+    if (/^\s*(?:[-*]\s*)*(?:\*\*)?verdict(?:\*\*)?\s*(?::|\s[-–—])/i.test(raw)) last = raw.trim();
+  }
+  return last;
+}
+/** A verdict that holds the merge: `not ok(ay)` / `not-ok`, `changes needed|requested|required`, `request(ed) changes`,
+ * `blocked` - right after `Verdict:`, non-letters (marks, an emoji) allowed in between. */
+const negative = (line) => /verdict\s*(?::|\s[-–—])[^\w\n]*(?:not[\s-]+ok(?:ay)?|changes\s+(?:needed|requested|required)|request(?:ed)?\s+changes|blocked)\b/i
+  .test(String(line || '').replace(/[*`_]/g, ''));
+
+/** Does the PR thread hold a content review by another instance, on a model the risk allows, whose verdict is not
+ * negative? Per reviewing key the LATEST content review decides (a later OK supersedes an earlier not OK; measured
+ * 2026-11-27 on the macOS instance: #654 "Verdict: not OK as is" and #662 "Verdict: changes needed" would have merged).
+ * A review without a Verdict line counts as before. ACROSS keys the newer side wins (Windows review of #697,
+ * 2026-11-28: key B OK at 10:00, key C not OK at 11:00 merged): a negative latest review that is newer than the newest
+ * counting positive one holds; a positive one posted after it lifts it. Returns { ok, held: [{ key, line }] } - `held`
+ * names the negative latest reviews newer than the newest positive one, for the deny text. */
 function reviewed(pr) {
   const author = (KEY_RX.exec(String(pr.body || '')) || [])[1];
   const least = need(RISKS[prRisk(pr)], 'review');
-  return [...(pr.comments || []), ...(pr.reviews || [])].some((c) => {
-    const t = String((c && c.body) || '');
-    const k = (KEY_RX.exec(t) || [])[1];
-    return k && (!author || k.toLowerCase() !== author.toLowerCase()) && missing(t, labelsAt(c)).length === 0
-      && tier(modelLine(t)) >= least;
-  });
+  const when = (c) => String((c && (c.createdAt || c.submittedAt)) || '');
+  const latest = {};
+  [...(pr.comments || []), ...(pr.reviews || [])].map((c, i) => ({ c, i }))
+    .sort((a, b) => (when(a.c) < when(b.c) ? -1 : when(a.c) > when(b.c) ? 1 : a.i - b.i))
+    .forEach(({ c }, pos) => {
+      const t = String((c && c.body) || '');
+      const k = (KEY_RX.exec(t) || [])[1];
+      if (k && (!author || k.toLowerCase() !== author.toLowerCase()) && missing(t, labelsAt(c)).length === 0) latest[k.toLowerCase()] = { t, pos };
+    });
+  const neg = [];
+  let lastOk = -1;
+  for (const [key, { t, pos }] of Object.entries(latest)) {
+    const line = verdictLine(t);
+    if (negative(line)) neg.push({ key, line, pos });
+    else if (tier(modelLine(t)) >= least) lastOk = Math.max(lastOk, pos);
+  }
+  const held = neg.filter((h) => h.pos > lastOk).map(({ key, line }) => ({ key, line }));
+  return { ok: lastOk >= 0 && !held.length, held };
 }
 
 /** The caller's model, measured: the last assistant record's `message.model` of a known family. null when unreadable. */
@@ -449,12 +491,20 @@ function checkMerge(cmd, ps) {
     return block(`${t.repo}#${t.nr} - a merge train whose body names no member in the form \`- #N <branch> <sha>\` (7-40 hex), ` +
       'so no member review could be read. Write the members as merge-train.sh writes them, or add `# CONTENT-REVIEW-OK: <why>`.');
   }
-  const open = [];
+  const open = [], held = [];
   const read = train ? readPrs(t.repo, members) : {};
   for (const n of members) {
     let p = pr;
     if (train) { p = read[n]; if (!p) { open.push(`#${n} (unreadable)`); continue; } }
-    if (!reviewed(p)) open.push(`#${n} (risk ${RISKS[prRisk(p)]}, review on ${CFG.tiers[need(RISKS[prRisk(p)], 'review')]} or above)`);
+    const r = reviewed(p);
+    if (r.ok) continue;
+    if (r.held.length) held.push(...r.held.map((h) => `#${n}: instance ${h.key} - "${h.line}"`));
+    else open.push(`#${n} (risk ${RISKS[prRisk(p)]}, review on ${CFG.tiers[need(RISKS[prRisk(p)], 'review')]} or above)`);
+  }
+  if (held.length) {
+    return block(`${t.repo}#${t.nr} - the latest content review says the change is not ready:\n  ${held.join('\n  ')}\n` +
+      'What lifts it: a later content review with a positive verdict as its last `Verdict:` line (e.g. `Verdict: OK at <sha>`), ' +
+      'or `# CONTENT-REVIEW-OK: <why>` in the call.' + (open.length ? `\nAlso without a content review: ${open.join(', ')}.` : ''));
   }
   if (!open.length) return 0;
   return block(`${t.repo}#${t.nr} - no content review by another instance on: ${open.join(', ')}.\n` +

@@ -62,6 +62,12 @@ hand — six newly passed what main had held. The fixtures had been added in one
 A review posted before 2026-11-16 counts without the `Gaps:` line (`GAPS_FROM` in the gate), so open PRs keep
 the reviews they have.
 
+The merge also reads the review's conclusion: its LAST `Verdict:` line outside code fences and `>` quotes (so
+end the review with it; a quoted earlier verdict or a probe input listed above it is not read). A verdict that
+opens with not OK, changes needed / requested / required, request(ed) changes or blocked holds the merge. Per
+instance key the latest review counts; across keys the newer side wins — a negative verdict newer than every
+counting OK holds, an OK posted after it lifts it. A review with no `Verdict:` line counts as before.
+
 An answer may be short; it may not be empty. "Nothing found" is an answer when it names where you looked.
 
 ## Risk — and the model that may build and review it
