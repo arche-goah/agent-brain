@@ -69,7 +69,9 @@ ask window (all questions and dialogs, then the closing mode question) hold in b
 by the word lists or by the intent classifier - opens the mode-confirm question, and only its answer switches. Towards
 autonomous the question offers what is to be handled autonomously, with "stay interactive" always as the last option;
 towards interactive it asks "continue interactively?", the interactive option FIRST - the mode the operator's words name
-comes first (operator 2026-11-26). The question carries the header
+comes first (operator 2026-11-26). Where the interactive option stands is fixed when the question is ASKED (the
+mode word waiting then), and a question asked before 2026-11-26 in the old order (interactive last) is read by that
+order - the update re-reads no earlier answer. The question carries the header
 `mode-confirm` and a short explanation from this page (no extra rights; questions collected or asked at once). Until it
 is answered the mode stays as it is, and the autonomous gate holds every call but reads and the question itself
 (`helpers/mode-confirm.cjs`). A rejected question switches nothing; a word naming the mode already in force asks nothing. The mode question at the
