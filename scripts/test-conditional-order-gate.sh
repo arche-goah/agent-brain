@@ -315,6 +315,27 @@ run_case cls-then block Workflow '{"name":"x"}' "$CIC"
 # the record written at submit, BEFORE the transcript holds the prompt (queued), with the same text still waives
 printf '{"at":"2026-11-26T08:59:50.000Z","session":"cls-then","mode":"hook","model":{"condition":false},"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
 run_case cls-then allow Workflow '{"name":"x"}' "$CIC"
+# Windows content review round two (2026-11-27), probe P9: the same text typed twice - an older record (false) must not
+# overrule the prompt's OWN record (true, +3 s); the own record decides
+{
+  printf '{"message":{"role":"user","content":"earlier prompt"}}\n'
+  printf '{"timestamp":"2026-11-26T09:00:00.000Z","message":{"role":"user","content":"then push after CI is green"}}\n'
+} > "$T/cls-twice.jsonl"
+printf '{"at":"2026-11-26T08:50:00.000Z","session":"cls-twice","mode":"hook","model":{"condition":false},"prompt":"then push after CI is green"}\n{"at":"2026-11-26T09:00:03.000Z","session":"cls-twice","mode":"hook","model":{"condition":true},"prompt":"then push after CI is green"}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-twice block Workflow '{"name":"x"}' "$CIC"
+# probe P8: a prompt over 160 characters whose condition stands after character 160, no own record yet, and an older
+# record (false) of a prompt with the same first 160 characters: the stored text is truncated, so it does not waive ...
+LONGHEAD="Here is the log of the last run, read it before you do anything: three warnings from the linter, one stale cache entry in the runner, two retries of the network step"
+[ "${#LONGHEAD}" -ge 160 ] || bad "fixture: the long prompt's head must reach 160 characters (${#LONGHEAD})"
+{
+  printf '{"message":{"role":"user","content":"earlier prompt"}}\n'
+  printf '{"timestamp":"2026-11-26T09:00:00.000Z","message":{"role":"user","content":%s}}\n' "$(js "$LONGHEAD and then push after CI is green")"
+} > "$T/cls-long.jsonl"
+printf '{"at":"2026-11-26T08:55:00.000Z","session":"cls-long","mode":"hook","model":{"condition":false},"prompt":%s}\n' "$(js "${LONGHEAD:0:160}")" > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-long block Workflow '{"name":"x"}' "$CIC"
+# ... control: the prompt's own record (forward window, +3 s, the same truncated text) still decides for a long prompt
+printf '{"at":"2026-11-26T09:00:03.000Z","session":"cls-long","mode":"hook","model":{"condition":false},"prompt":%s}\n' "$(js "${LONGHEAD:0:160}")" > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-long allow Workflow '{"name":"x"}' "$CIC"
 
 echo
 [ "$fail" -eq 0 ] && echo "conditional-order-gate fixtures: ALL passed" || echo "FAILURE"

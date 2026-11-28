@@ -353,13 +353,20 @@ function intentFor(list, ts, text) {
  * removing one: measured 2026-11-26 by the Windows review of #682, an earlier "ok" or a prompt with the same first
  * 40 characters waived a hold main kept, and a failed call of the prompt itself fell back to an older record.
  */
+// Round two of that review (2026-11-27): the prompt's OWN record - the forward window, the classifier runs on submit - is
+// taken before any older one (an older record of the same text overruled it), and an older record counts only for a
+// prompt under 160 characters, whose stored text is then complete (two prompts sharing their first 160 characters were
+// one prompt to it).
+const KEPT = 160;
 function intentExact(list, ts, text) {
   const t = Date.parse(ts || '');
-  const full = (x) => String(x || '').replace(/\s+/g, ' ').trim().slice(0, 160);
-  const want = full(text);
+  const fold = (x) => String(x || '').replace(/\s+/g, ' ').trim();
+  const whole = fold(text);
+  const want = whole.slice(0, KEPT);
   if (Number.isNaN(t) || !want) return null;
-  const hit = list.find((r) => r.prompt !== null && r.at >= t - INTENT_BEFORE_MS && r.at - t <= INTENT_WINDOW_MS
-    && full(r.prompt) === want && r.model);
+  const same = (r) => r.prompt !== null && r.model && fold(r.prompt).slice(0, KEPT) === want;
+  const hit = list.find((r) => r.at >= t && r.at - t <= INTENT_WINDOW_MS && same(r))
+    || (whole.length < KEPT ? list.filter((r) => r.at < t && t - r.at <= INTENT_BEFORE_MS && same(r)).pop() : null);
   return hit ? hit.model : null;
 }
 
