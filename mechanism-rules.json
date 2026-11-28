@@ -9,19 +9,19 @@
       "needs_operator_word": true
     },
     {
-      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\(|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:(?:bash|sh|zsh)\\s+)?(?:\"[^\"\\n]*/|'[^'\\n]*/|[^\\s()]*/)?ci-watch\\.sh[\"']?\\s+(?:pr|ref)\\b|gh\\s+run\\s+watch\\b|gh\\s+pr\\s+checks\\b[^|;&]*--watch\\b)",
+      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\(|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:(?:bash|sh|zsh)\\s+)?(?![A-Za-z_]\\w*=)(?:\"[^\"\\n]*/|'[^'\\n]*/|[^\\s()]*/)?ci-watch\\.sh[\"']?\\s+(?:pr|ref)\\b|gh\\s+run\\s+watch\\b|gh\\s+pr\\s+checks\\b[^|;&]*--watch\\b)",
       "foreground_only": true,
       "was": "waiting for CI in the foreground - a core CI run takes about 15 minutes and holds the whole session; several PRs in a row cost hours",
       "instead": "Start the same command with Bash run_in_background and keep working; the verdict arrives as a notification (Working Rule #9). Not through Monitor: the harness ends a Monitor after 30 min at most, and a core CI run takes about 36 min (2026-10-26). Several PRs: one detached watch each, in parallel."
     },
     {
-      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\(|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:[^\\s()]*/)?ci-lint-local\\.sh\\b",
+      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\(|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?![A-Za-z_]\\w*=)(?:[^\\s()]*/)?ci-lint-local\\.sh\\b",
       "foreground_only": true,
       "was": "running the local CI mirror in the foreground - measured 2026-10-25 on the macOS instance: the lint job runs the fixture suites and holds the session for minutes, the operator had to background it by hand",
       "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; read its summary line before claiming green (Working Rule #13)."
     },
     {
-      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:(?:env|command)\\s+)?(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:\\S*/)?core-(?:merge|push)-lint\\.sh\\b",
+      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:(?:env|command)\\s+)?(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?![A-Za-z_]\\w*=)(?:\\S*/)?core-(?:merge|push)-lint\\.sh\\b",
       "foreground_only": true,
       "was": "running core-merge-lint.sh or core-push-lint.sh in the foreground - both run ci-lint-local.sh plus the touched fixture suites; measured 2026-10-31 on the macOS instance: a merge lint held the session for over 3 min until the operator moved it to the background by hand (ported 2026-11-17 from that instance's rule, which stood in no core file)",
       "instead": "Start the same command detached (Bash run_in_background) and keep working; read its GREEN/RED line before pushing or merging (Working Rule #13). Several PRs: one clone each through CORE_MERGE_LINT_CLONE, in parallel."
@@ -39,7 +39,7 @@
       "instead": "Start the loop detached (Bash run_in_background, or Monitor) and keep working; its end arrives as a notification. A background job you already started notifies on its own - no loop needed (Working Rule #13)."
     },
     {
-      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\(|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:\"[^\"\\n]*/|'[^'\\n]*/|[^\\s()]*/)?(?!test-)(?!(?:repo-activity|shared-memory)-watch\\.sh\\s+(?:status|disarm)\\b)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h)\\b)",
+      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\(|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?![A-Za-z_]\\w*=)(?:\"[^\"\\n]*/|'[^'\\n]*/|[^\\s()]*/)?(?!test-)(?!(?:repo-activity|shared-memory)-watch\\.sh\\s+(?:status|disarm)\\b)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h)\\b)",
       "foreground_only": true,
       "was": "a waiting script (wait-*.sh, *-watch.sh: reconnect, link, collab, repo-activity, shared-memory watches) in the foreground - the class sweep of the wait-loop rule (2026-10-26): these scripts are the same wait under a name, and only ci-watch.sh was listed",
       "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A help call passes, and so do the `status`/`disarm` subcommands of the two scripts that have them (repo-activity-watch.sh, shared-memory-watch.sh) - collab-watch.sh has none: `collab-watch.sh status` ARMS the watch (measured 2026-10-26)."
@@ -79,7 +79,7 @@
       "instead": "core/scripts/ci-watch.sh pr <owner/repo> <nr> (or ref <owner/repo> <ref>), started detached (Bash run_in_background). Exit 0 green, 1 red, 2 NOT measurable (loud, not green), 3 the repo has no CI. A compound that calls ci-watch.sh itself passes."
     },
     {
-      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\()\\s*(?:(?:bash|sh|zsh)\\s+)?(?:[^\\s()]*/)?(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b[^|;\\n]*(?:&\\s*(?:$|\\n)|>\\s*/dev/null)",
+      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\()\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?![A-Za-z_]\\w*=)(?:[^\\s()]*/)?(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b[^|;\\n]*(?:&\\s*(?:$|\\n)|>\\s*/dev/null)",
       "was": "a waiting script armed with '&' or with its output thrown away - the process hangs on the tool session and dies with it, the harness never knows it and can never notify; measured 2026-08-08 on the macOS instance: an operator's restart ran into nothing",
       "instead": "Start it with Bash run_in_background (or Monitor for a stream), never with '&'. Its OUTPUT is the report path: no >/dev/null. Afterwards check that it runs."
     },
