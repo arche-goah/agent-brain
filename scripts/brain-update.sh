@@ -546,7 +546,15 @@ if [ "$pin_dirty" -gt 1 ]; then
   failed=1
 elif [ "$pin_dirty" -eq 1 ]; then
   git add core config/ecosystem.json .gitmodules 2>/dev/null
-  if git commit -q -m "chore(core): brain-update to the released state"; then
+  # Commit BY PATH (core working-rules #12): since 2026-11-25 the session start runs this script by
+  # itself, so it now runs beside another session's work - a bare `git commit` took whatever that
+  # session had staged. Only the paths this script moves, and only those the repo tracks (a pathspec
+  # that matches nothing fails the whole commit).
+  # core and .gitmodules are tracked in every brain that reaches this line (the checks at the top
+  # exit without a core/ submodule), so the array is never empty (OS-22, macOS bash 3.2).
+  own_paths=(core .gitmodules)
+  git ls-files --error-unmatch -- config/ecosystem.json >/dev/null 2>&1 && own_paths+=(config/ecosystem.json)
+  if git commit -q -m "chore(core): brain-update to the released state" -- "${own_paths[@]}"; then
     echo "OK   pin committed"
     vis=$(gh repo view --json visibility --jq .visibility 2>/dev/null || echo unknown)
     if [ "$vis" = "PRIVATE" ]; then
@@ -555,6 +563,12 @@ elif [ "$pin_dirty" -eq 1 ]; then
     else
       echo "NOTE not pushed (repo visibility: $vis — only a PRIVATE own brain pushes freely)"
     fi
+  else
+    # Measured on the #670 review (2026-11-25, Windows): with the brain's index locked by another
+    # session's commit, core/ moved, nothing was committed, and the run still ended DONE with rc 0 -
+    # an unattended start would have reported a clean update over an uncommitted pin.
+    echo "FAIL core/ moved but the pin was NOT committed (git commit failed - index locked by another session?) — commit by hand: git commit -m \"chore(core): brain-update to the released state\" -- ${own_paths[*]}"
+    failed=1
   fi
 fi
 

@@ -25,7 +25,8 @@ do NOT delete them, otherwise the rules only sit on disk instead of in context):
   the consumed state (pin/main) mechanically.
 - Core update: `bash core/scripts/brain-update.sh` — one command, follows the
   marketplace pin on every layer (plugin cache with provenance check, submodule
-  remote, `.gitmodules`, tag). Recommended weekly, never on a show day. NOT
+  remote, `.gitmodules`, tag). The session start runs it by itself; a show day holds it
+  through `.claude/rules/core-update.json` (CONVENTIONS "The sync beat"). NOT
   `git submodule update --remote core`: that tracks `main`, not the released pin —
   and after a core repo move it resolves the OLD repo's main.
 

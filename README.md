@@ -35,7 +35,7 @@ with your own), enable the plugin — it ships the core's hooks (`hooks/hooks.js
 delete your local copies of what the core now delivers (a copied core hook fires twice;
 `scripts/hook-coverage.py` names it).
 
-Weekly sync (never on a show day):
+Sync (the session start runs it by itself; a show day holds it via `.claude/rules/core-update.json`):
 
 ```
 bash core/scripts/brain-update.sh

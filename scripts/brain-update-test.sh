@@ -326,6 +326,29 @@ case "$out" in
   *"cache provenance mismatch"*"auto-heal tried a reinstall"*) ok "a mismatch that survives the reinstall stays FAIL (negative control)" ;;
   *) bad "surviving mismatch not FAIL: $(printf %s "$out" | grep -a -m2 'brain-core@mk')" ;;
 esac
+# 8. commit by path (2026-11-25: the session start now runs this beside another session's work): a file
+#    another session staged stays staged and out of the pin commit.
+mk_brain bypath v1.0.0 2.0.0 "mk" ""
+echo other > "$SB/bypath/foreign.txt"; git -C "$SB/bypath" add foreign.txt
+out=$(run_brain bypath)
+if [ "$(git -C "$SB/bypath/core" rev-parse HEAD)" != "$V2" ]; then
+  bad "commit by path: core/ did not move: $(printf %s "$out" | grep -a -m1 'core')"
+elif git -C "$SB/bypath" show --name-only --format= HEAD | grep -aqx foreign.txt; then
+  bad "commit by path: the pin commit swept in another session's staged file"
+elif ! git -C "$SB/bypath" diff --cached --name-only | grep -aqx foreign.txt; then
+  bad "commit by path: the foreign file is no longer staged"
+else
+  ok "commit by path: the pin commit holds core only, a foreign staged file stays staged"
+fi
+# 9. the pin commit fails (index locked by another session's commit, #670 review 2026-11-25): FAIL and rc 1, never DONE.
+mk_brain locked v1.0.0 2.0.0 "mk" ""
+touch "$SB/locked/.git/index.lock"
+out=$(run_brain locked); rc=$?
+rm -f "$SB/locked/.git/index.lock"
+case "$out" in
+  *"FAIL core/ moved but the pin was NOT committed"*) [ "$rc" -ne 0 ] && ok "a failed pin commit is FAIL with rc $rc" || bad "a failed pin commit: FAIL line but rc 0" ;;
+  *) bad "a failed pin commit was not reported: $(printf %s "$out" | grep -a -m2 -E 'pin|DONE')" ;;
+esac
 rm -rf "$SB"
 
 echo

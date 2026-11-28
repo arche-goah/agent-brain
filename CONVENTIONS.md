@@ -449,10 +449,20 @@ conflict a human must resolve by hand — reached structurally, not through care
    show data stay per person. There is no "merge" of two memories — separate histories are
    the normal case, not a defect.
 
-**The sync beat.** Pulling (each side for itself, weekly is enough, never on a show day):
+**The sync beat.** Pulling (each side for itself):
 `bash core/scripts/brain-update.sh` — refreshes the marketplaces, every enabled plugin
 (cache provenance verified against the pin), the `core/` submodule onto the pinned tag,
-`ecosystem.json`. Not `git submodule update --remote core`: that tracks `main`, not the
+`ecosystem.json`. **The session start runs it by itself** when a channel is behind the pin
+(operator decision 2026-11-25: the plugin moved on while `core/` stayed, a Windows brain ran
+the hooks of 2.1.5 over the helpers of 2.0.4), in the background; the next start reports how
+it ended. It runs only at a real start (SessionStart source `startup`), never on a compaction,
+a resume or a clear. It holds — and asks instead — on a declared core alpha, a checkout ahead of the pin,
+local changes in `core/`, a `core/` HEAD that is no released tag or sits on a branch (a `core/`
+without any tags says so: one hand run fetches them), a failed
+automatic run less than six hours ago, the machine profile's `- Session pull: off` or
+`- Core update: off` (per machine: the show machine's switch), or `.claude/rules/core-update.json`
+(brain-wide): `{"hold_until": "YYYY-MM-DD", "reason": "show day"}`, `{"auto": false, "reason": "…"}`.
+A hold file that exists but cannot be read as a hold also holds, and says so. Not `git submodule update --remote core`: that tracks `main`, not the
 released pin. Giving:
 branch → CI green → PR → merge → **tag → marketplace pin**. Only the pin makes a change
 visible to the other side — "I pushed" never means "something changed for you"; the

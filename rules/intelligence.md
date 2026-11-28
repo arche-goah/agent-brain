@@ -19,7 +19,8 @@ of it** (operator order 2026-10-12); the paragraphs below define each slot:
    line with the next concrete step.
 4. **Open points for this instance** — "n I can handle — shall I?" (ONE question, only here — the one
    closing question `stoppen-gate.cjs` lets stand) and "m need you"; details below.
-5. **Due decisions** — a due brain-scan or deep check, a deferred point said once, a pending update:
+5. **Due decisions** — a due brain-scan or deep check, a deferred point said once, a core update the
+   start HELD (it runs by itself otherwise — operator decision 2026-11-25, `CONVENTIONS.md` sync beat):
    each a direct question with its price, through the question tool ("Presenting to the Operator").
 
 Whatever came back clean stays silent; empty slots are left out. A later reply repeats none of slots
