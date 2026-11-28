@@ -8,6 +8,8 @@
 #
 # Usage: bash scripts/test-session-helpers.sh   (exit 0 = all fixtures pass)
 set -u
+# The mode is set by its words here (the latch before the mode-confirm answer); the confirmation: test-mode-confirm.sh.
+export MODE_READING=words
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 T="$(mktemp -d)"

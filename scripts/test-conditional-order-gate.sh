@@ -95,6 +95,39 @@ mk "$T/push-via-C.jsonl" '"after the mac answers, push it"' 0 ''
 run_case push-via-C block Bash '{"command":"git -C /x/y push -q origin feat/x"}'
 mk "$T/merge-delegated.jsonl" '"clear it with Alex first, and merge once he answers"' 0 ''
 run_case merge-delegated block Bash '{"command":"gh pr merge 12 -R o/r --merge"}'
+# 2026-11-26 (macOS, fallback run): a push was held while `gh pr edit … --body-file` in the same message went through -
+# editing a PR's public text, marking it ready, closing it and a release are as external as a comment
+mk "$T/pr-edit.jsonl" '"after the mac answers, update the PR text"' 0 ''
+run_case pr-edit block Bash '{"command":"gh pr edit 681 -R o/r --body-file b.md"}'
+mk "$T/pr-ready.jsonl" '"once the CI is green, mark it ready"' 0 ''
+run_case pr-ready block Bash '{"command":"gh pr ready 12 -R o/r"}'
+mk "$T/release.jsonl" '"after the review, cut the release"' 0 ''
+run_case release block Bash '{"command":"gh release create v1.2.3 -R o/r --notes-file n.md"}'
+mk "$T/pr-view.jsonl" '"after the mac answers, update the PR text"' 0 ''
+run_case pr-view allow Bash '{"command":"gh pr view 681 -R o/r --json body"}'
+# 2026-11-28, review of #686 (Windows): the forms the regex missed, now read through the shared gh parser
+for c in ghexe-ready:PowerShell:'gh.exe pr ready 12' \
+         ghpath-edit:PowerShell:'& \"C:\\Program Files\\GitHub CLI\\gh.exe\" pr edit 681 --body-file b.md' \
+         bash-c-edit:Bash:"bash -c 'gh pr edit 681 --body x'" \
+         repo-first:Bash:'gh -R o/r pr edit 681 --body x' \
+         api-field:Bash:'gh api repos/o/r/pulls/681 -f body=x' \
+         api-patch:Bash:'gh api repos/o/r/pulls/681 --method PATCH --input b.json' \
+         api-method-eq:Bash:'gh api repos/o/r/issues/1 --method=DELETE' \
+         release-upload:Bash:'gh release upload v1 a.zip -R o/r' \
+         issue-delete:Bash:'gh issue delete 7 -R o/r --yes' \
+         update-branch:Bash:'gh pr update-branch 12 -R o/r' \
+         repo-edit:Bash:'gh repo edit o/r --description x'; do
+  n="${c%%:*}"; rest="${c#*:}"; tool="${rest%%:*}"; cmd="${rest#*:}"
+  mk "$T/$n.jsonl" '"after the mac answers, update the PR text"' 0 ''
+  run_case "$n" block "$tool" "{\"command\":\"$cmd\"}"
+done
+# reads stay free through the parser too: a GET by default, an explicit GET, a quoted gh call that is data
+for c in api-get:'gh api repos/o/r/pulls/681' api-get-x:'gh api repos/o/r/pulls --method GET' \
+         release-list:'gh release list -R o/r' echo-data:'echo \"gh pr edit 681 is the next step\"'; do
+  n="${c%%:*}"; cmd="${c#*:}"
+  mk "$T/$n.jsonl" '"after the mac answers, update the PR text"' 0 ''
+  run_case "$n" allow Bash "{\"command\":\"$cmd\"}"
+done
 mk "$T/decides-ps.jsonl" '"Alex decides this one; then publish the comment"' 0 ''
 run_case decides-ps block PowerShell '{"command":"gh pr comment 12 -R o/r --body-file n.md"}'
 mk "$T/claude-p.jsonl" '"wait for the CI, then run the headless check"' 0 ''
@@ -286,6 +319,56 @@ printf '{"at":"2026-10-30T19:00:04.000Z","session":"cls-cond","mode":"hook","mod
 run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
 printf '{"at":"2026-10-30T19:00:04.000Z","session":"other","mode":"hook","model":{"condition":true}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
 run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
+
+# --- the record decides in BOTH directions (operator decision 2026-11-26): a word hit the model reads as no
+# condition passes; without a record of this prompt the words still hold
+{
+  printf '{"message":{"role":"user","content":"earlier prompt"}}\n'
+  printf '{"timestamp":"2026-11-26T09:00:00.000Z","message":{"role":"user","content":"Fine, then the core needs a fix."}}\n'
+} > "$T/cls-then.jsonl"
+rm -f "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+printf '{"at":"2026-11-26T09:00:03.000Z","session":"cls-then","mode":"hook","model":{"condition":false},"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then allow Workflow '{"name":"x"}' "$CIC"
+printf '{"at":"2026-11-26T09:00:03.000Z","session":"cls-then","mode":"hook","model":{"condition":true},"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+# a record of ANOTHER prompt (different text) does not waive the word hit
+printf '{"at":"2026-11-26T09:00:03.000Z","session":"cls-then","mode":"hook","model":{"condition":false},"prompt":"something else entirely"}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+# a failed classifier call (model null) leaves the words in charge
+printf '{"at":"2026-11-26T09:00:03.000Z","session":"cls-then","mode":"hook","model":null,"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+# Windows content review 2026-11-26, case (4): the prompt's own call failed and an EARLIER short prompt ("ok", a
+# prefix of nothing here but matched by the 40-character prefix rule before) was read as no condition - no waive
+printf '{"at":"2026-11-26T08:40:00.000Z","session":"cls-then","mode":"hook","model":{"condition":false},"prompt":"Fine"}\n{"at":"2026-11-26T09:00:03.000Z","session":"cls-then","mode":"hook","model":null,"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+# case (1): no own record yet, an earlier record of a prompt with the same first 40 characters waived the hold
+printf '{"at":"2026-11-26T08:58:00.000Z","session":"cls-then","mode":"hook","model":{"condition":false},"prompt":"Fine, then the core needs a fix. Nothing else."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+# the record written at submit, BEFORE the transcript holds the prompt (queued), with the same text still waives
+printf '{"at":"2026-11-26T08:59:50.000Z","session":"cls-then","mode":"hook","model":{"condition":false},"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then allow Workflow '{"name":"x"}' "$CIC"
+# Windows content review round two (2026-11-27), probe P9: the same text typed twice - an older record (false) must not
+# overrule the prompt's OWN record (true, +3 s); the own record decides
+{
+  printf '{"message":{"role":"user","content":"earlier prompt"}}\n'
+  printf '{"timestamp":"2026-11-26T09:00:00.000Z","message":{"role":"user","content":"then push after CI is green"}}\n'
+} > "$T/cls-twice.jsonl"
+printf '{"at":"2026-11-26T08:50:00.000Z","session":"cls-twice","mode":"hook","model":{"condition":false},"prompt":"then push after CI is green"}\n{"at":"2026-11-26T09:00:03.000Z","session":"cls-twice","mode":"hook","model":{"condition":true},"prompt":"then push after CI is green"}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-twice block Workflow '{"name":"x"}' "$CIC"
+# probe P8: a prompt over 160 characters whose condition stands after character 160, no own record yet, and an older
+# record (false) of a prompt with the same first 160 characters: the stored text is truncated, so it does not waive ...
+LONGHEAD="Here is the log of the last run, read it before you do anything: three warnings from the linter, one stale cache entry in the runner, two retries of the network step"
+[ "${#LONGHEAD}" -ge 160 ] || bad "fixture: the long prompt's head must reach 160 characters (${#LONGHEAD})"
+{
+  printf '{"message":{"role":"user","content":"earlier prompt"}}\n'
+  printf '{"timestamp":"2026-11-26T09:00:00.000Z","message":{"role":"user","content":%s}}\n' "$(js "$LONGHEAD and then push after CI is green")"
+} > "$T/cls-long.jsonl"
+printf '{"at":"2026-11-26T08:55:00.000Z","session":"cls-long","mode":"hook","model":{"condition":false},"prompt":%s}\n' "$(js "${LONGHEAD:0:160}")" > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-long block Workflow '{"name":"x"}' "$CIC"
+# ... control: the prompt's own record (forward window, +3 s, the same truncated text) still decides for a long prompt
+printf '{"at":"2026-11-26T09:00:03.000Z","session":"cls-long","mode":"hook","model":{"condition":false},"prompt":%s}\n' "$(js "${LONGHEAD:0:160}")" > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-long allow Workflow '{"name":"x"}' "$CIC"
 
 echo
 [ "$fail" -eq 0 ] && echo "conditional-order-gate fixtures: ALL passed" || echo "FAILURE"

@@ -21,7 +21,8 @@
  *   - `Agent` from the third call in the turn (one or two agents are a lookup, nine are a
  *     scan — the collaborator's threshold);
  *   - a shell command that leaves the machine or starts a model: `claude -p`, `git push`,
- *     `gh pr create|comment|review|merge`, `gh api … -X`, `gh issue create|comment`.
+ *     a writing `gh pr|issue|release|repo` verb (list: GH_EXTERNAL), `gh api` with a field, an input file or a
+ *     method other than GET - read through the shared gh parser (`gh.exe`, a quoted path, `bash -c`, `gh -R x`).
  * It passes once the agent has written, in this turn, either
  *   CONDITION-MET: <the condition, in the operator's words> — <evidence: where/when it was met>
  * or
@@ -45,8 +46,8 @@ const path = require('path');
 const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, questionAnswers } = require('./turn-kind.cjs');
 // A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
 const { isGitPush } = require('./git-push.cjs');
-const { answerHalves } = require('./published-text.cjs');
-const { intents, intentFor } = require('./autonomous-mode.cjs');
+const { answerHalves, invocations } = require('./published-text.cjs');
+const { intents, intentFor, intentExact } = require('./autonomous-mode.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -57,7 +58,42 @@ function allow() { hookExit(0); }
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
 const AGENT_THRESHOLD = 3;   // the call that trips the gate: this many Agent calls in one turn
-const EXTERNAL = /(?:^|[\s;&|(`])(?:claude\s+-p\b|gh\s+pr\s+(?:create|comment|review|merge)\b|gh\s+issue\s+(?:create|comment)\b|gh\s+api\b[^\n|;&]*\s-X\s)/i;
+const EXTERNAL = /(?:^|[\s;&|(`])(?:claude\s+-p\b|gh\s+pr\s+(?:create|comment|review|merge|edit|ready|close|reopen)\b|gh\s+issue\s+(?:create|comment|edit|close|reopen)\b|gh\s+release\s+(?:create|edit|delete)\b|gh\s+api\b[^\n|;&]*\s-X\s)/i;
+// The same calls read by the shared gh parser (published-text.cjs `invocations`), with this gate's own verb list
+// (review of agent-brain #686, 2026-11-26, Windows: the regex above missed `gh.exe pr ready`, `& "<dir>\gh.exe" pr edit`,
+// `bash -c 'gh pr edit …'`, `gh -R o/r pr edit`, `gh api … -f body=x` / `--method PATCH`, `gh release upload` and
+// `gh issue delete`). The regex stays as the fallback for a text the parser cannot read; a call either one names is held.
+const GH_EXTERNAL = {
+  pr: ['create', 'comment', 'review', 'merge', 'edit', 'ready', 'close', 'reopen', 'update-branch', 'lock', 'unlock'],
+  issue: ['create', 'comment', 'edit', 'close', 'reopen', 'delete', 'transfer', 'lock', 'unlock', 'pin', 'unpin'],
+  release: ['create', 'edit', 'delete', 'upload', 'delete-asset'],
+  repo: ['create', 'edit', 'delete', 'rename', 'archive', 'unarchive', 'fork'],
+};
+const GH_GLOBAL_WITH_VALUE = /^(?:-R|--repo|--hostname)$/;
+function ghExternal(cmd, ps) {
+  const calls = invocations(cmd, ps, 'gh');
+  if (!calls) return false;
+  for (const w of calls) {
+    let i = 1;
+    while (i < w.length && /^-/.test(w[i])) i += GH_GLOBAL_WITH_VALUE.test(w[i]) ? 2 : 1;   // `gh -R o/r pr edit`
+    const sub = String(w[i] || '').toLowerCase();
+    const verb = String(w[i + 1] || '').toLowerCase();
+    if (sub === 'api') {
+      const args = w.slice(i + 1);
+      // a field or an input file makes gh POST by itself; an explicit method other than GET writes
+      if (args.some((a) => /^(?:-f|-F|--field|--raw-field|--input)(?:=|$)/.test(a) || /^-[fF]\S/.test(a))) return true;
+      for (let k = 0; k < args.length; k++) {
+        const m = /^(?:-X|--method)(?:=?(.+))?$/.exec(args[k]);
+        if (!m) continue;
+        const method = m[1] !== undefined ? m[1] : args[k + 1];
+        if (method && !/^GET$/i.test(method)) return true;
+      }
+      continue;
+    }
+    if ((GH_EXTERNAL[sub] || []).includes(verb)) return true;
+  }
+  return false;
+}
 const MET = /CONDITION-MET:\s*(\S[^\n]{19,})/;
 const NONE = /CONDITION-NONE:\s*(\S[^\n]{14,})/;
 
@@ -213,7 +249,7 @@ process.stdin.on('end', () => {
   let why = '';
   if (tool === 'Workflow') why = 'a workflow (an audit-sized run)';
   else if (tool === 'Agent') why = `agent number ${AGENT_THRESHOLD} or more in this turn`;
-  else if ((tool === 'Bash' || tool === 'PowerShell') && typeof ti.command === 'string' && (EXTERNAL.test(ti.command) || isGitPush(ti.command))) {
+  else if ((tool === 'Bash' || tool === 'PowerShell') && typeof ti.command === 'string' && (EXTERNAL.test(ti.command) || ghExternal(ti.command, tool === 'PowerShell') || isGitPush(ti.command))) {
     why = 'externally effective (it leaves the machine or starts a model run)';
   } else return allow();
   if (!input.transcript_path) return allow();
@@ -233,11 +269,19 @@ process.stdin.on('end', () => {
     const m = s.match(condition);
     if (m) { hit = { sentence: s, word: m[0] }; break; }
   }
-  // The prompt classifier's record decides too, in the safe direction (2026-10-30, macOS instance: "after #217 and
-  // #195", in the operator's language, passed the word list). It can only add a check, never waive one.
-  if (!hit) {
-    const intent = intentFor(intents(input.transcript_path, cwd), seen.operatorAt);
-    if (intent && intent.condition) hit = { sentence: stripQuoted(seen.operator).replace(/\s+/g, ' ').trim(), word: 'the prompt classifier read a condition', classifier: true };
+  // A classifier record of THIS prompt decides, in both directions; the words decide only without one (operator
+  // decision 2026-11-26, question tool: "Ja, erst messen, dann bauen"). Measured the same day on the macOS instance,
+  // 5730 records: the words read a condition 794 times, the model agreed 172 times; blind hand judgement of 40
+  // disagreements: words-only 0 of 20 real conditions, model-only 9 of 20. Before, the model could only add a hold
+  // (2026-10-30: "after #217 and #195" in the operator's language passed the word list), and 82 of 115 holds in 14
+  // days were passed by marker.
+  // Waive only on the record of exactly this prompt (intentExact); a hold may come from the looser match (intentFor).
+  const list = intents(input.transcript_path, cwd);
+  const own = intentExact(list, seen.operatorAt, seen.operator);
+  if (own && own.condition === false) return allow();
+  const intent = own || intentFor(list, seen.operatorAt, seen.operator);
+  if (intent && intent.condition === true && !hit) {
+    hit = { sentence: stripQuoted(seen.operator).replace(/\s+/g, ' ').trim(), word: 'the prompt classifier read a condition', classifier: true };
   }
   if (!hit) return allow();
   // The line may also stand in the call itself (a `# CONDITION-NONE: …` comment in the command,
