@@ -22,7 +22,6 @@
     { "id": "risk", "label": "risk the operator carries" },
     { "id": "external", "label": "external effect: making something public, first publication, deployment, a push outside the organisation's repos, social accounts" },
     { "id": "release", "label": "release and stable pin of the core" },
-    { "id": "core-new", "label": "new functionality in the core (agreed first; follow-up fixes are free)" },
     { "id": "live", "label": "intervening in a running show or a live system outside its agreed frame" },
     { "id": "ownership", "label": "who is responsible for what" },
     { "id": "taste", "label": "taste: how an artefact looks or sounds" },

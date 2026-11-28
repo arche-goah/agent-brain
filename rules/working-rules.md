@@ -42,13 +42,17 @@
     operator's quoted ok. Carriers: `core/helpers/commitment-carrier-gate.cjs` (turn end),
     `core/scripts/carrier-audit.py` (pre-commit on new lessons, report on old ones),
     `core/scripts/commitments.py` (session report, prose counted as not carried).
-11. **Core PRs: new functionality is discussed first, follow-ups may be pushed**
-    (2026-10-09). NEW functionality (a new gate, hook, script, skill or rule) is agreed
-    with the operator before it is built — usually the order is that agreement. A
-    FOLLOW-UP (a fix, a correction, a catch-up inside an agreed strand, the clear findings
-    of an ordered audit, the port of running instance machinery, the rule text for an
-    operator correction) may be pushed and opened without a new word: the agreed channel
-    ASK OR ACT step 1 names. Making a repo public, a first publication, a push outside the
+11. **Core PRs are normal PRs: the review decides, not a prior word** (2026-10-09;
+    operator corrections 2026-11-24 and 2026-11-25). NEW functionality (a new gate, hook,
+    script, skill or rule) waits for no word: built (best as a local alpha that has shown
+    its effect), it is opened as a normal PR, and another instance's critical content
+    review (Model Routing) judges it before the beta - that review is where an objection
+    belongs when something is not built cleanly. The AIs may talk safety, complexity and
+    reversibility of a change through with each other beforehand; that is an option, never
+    a gate, and no PR waits for the operator's word to be opened. A FOLLOW-UP (a fix, a
+    correction, a catch-up inside a strand, the clear findings of an ordered audit, the
+    port of running instance machinery, the rule text for an operator correction) goes the
+    same way: the agreed channel ASK OR ACT step 1 names. Making a repo public, a first publication, a push outside the
     organisation's repos and a deployment stay gated. Carriers on every push: leak-scan,
     the English-only ratchet, the instance's name guard. Commit messages, branch names and
     PR texts are English too, on every path into the core (the ratchet reads files only).
@@ -287,7 +291,8 @@ History: core/docs/rule-history.md, "A Needed Reload Is Not a Wait State (operat
 1. **The assignment is the measure, not the activity.**
 2. **No self-invented goals while an operator assignment is open.** Every item on an
    assignment list carries its origin (`von: Operator` | `abgeleitet` =
-   `origin: operator | derived`); derived items are **proposals** and need an OK.
+   `origin: operator | derived`); derived items are **proposals** and need an OK — for
+   new core functionality the open PR is the proposal and the content review its OK (Working Rule #11).
 3. **An empty list is a SUCCESS, not an emergency** → **report and stop** (stop = the
    work, not the session or the run mode), don't refill;
    order done → check-in with the operator. Only a scheduled time-boxed run derives follow-ups, from a **reserve pool agreed
