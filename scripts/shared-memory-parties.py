@@ -357,11 +357,14 @@ def one_machine_target_finding(reason: str, audience: str, parties: dict) -> tup
     other = [d for d in siblings if any(_named(n, reason) for n in [d] + real[d][2])]
     if other:
         return f"one-machine reason names a different device ({', '.join(sorted(other))}), not its target {dev}", fix
+    # A reason that names its target (and no sibling) passes, whatever else it says ("not available on any other machine
+    # than <target>", "offline cache"); the unavailability words only sharpen the message for one that names no target
+    # (review of #699, Windows instance 2026-11-28: the order refused reasons that named their target).
+    if any(_named(n, reason) for n in [dev] + aliases):
+        return None
     if UNAVAILABLE.search(reason):
         return f"one-machine reason says something is unavailable - that excludes machines, it does not pick {dev}", fix
-    if not any(_named(n, reason) for n in [dev] + aliases):
-        return f"one-machine reason does not name its target {dev} - it says nothing about that machine", fix
-    return None
+    return f"one-machine reason does not name its target {dev} - it says nothing about that machine", fix
 
 
 def windows_check_to_one_device(text: str, audience: str, parties: dict) -> str | None:

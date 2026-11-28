@@ -502,6 +502,13 @@ def main() -> int:
         r, f = one("Review t3", "max-pc", "max-pc is the only machine with the USB dongle attached")
         check("a reason naming its target with a property of its own passes", r.returncode == 0 and f.is_file(),
               r.stdout + r.stderr)
+        # review of #699 (Windows instance 2026-11-28): a reason that names its target passes, unavailability words or not
+        r, f = one("Review t3b", "max-pc", "the desk is not available on any other machine than max-pc")
+        check("a reason naming its target passes although it speaks of unavailability", r.returncode == 0 and f.is_file(),
+              r.stdout + r.stderr)
+        r, f = one("Review t3c", "max-pc", "max-pc holds the offline cache of the show")
+        check("'offline' in a reason that names its target is no refusal", r.returncode == 0 and f.is_file(),
+              r.stdout + r.stderr)
         r, f = one("Review t4", "solo-box", "the USB dongle sits at this box")
         check("a device no other device could stand in for passes as before", r.returncode == 0 and f.is_file(),
               r.stdout + r.stderr)
