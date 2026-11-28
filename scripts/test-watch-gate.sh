@@ -389,6 +389,13 @@ check "(e2) instance wording without its data: built-ins only" "$T/ra8.jsonl" al
 mkdir -p "$R/.claude/rules"; printf '{"report_ask_patterns":["\\\\bsag\\\\s+bescheid\\\\b"]}\n' > "$R/.claude/rules/watch-gate.json"
 check "(e2) instance report_ask_patterns extend the built-ins" "$T/ra8.jsonl" block "$R"
 rm -f "$R/.claude/rules/watch-gate.json"
+# review of #698 (Windows instance 2026-11-28): decision and fact questions are no state requests (finding 1)
+n=0; for s in "Let me know when you are ready to continue." "Tell me once you have decided." "Can you tell me when the show is?" \
+              "Let me know as soon as possible which option you want."; do
+  n=$((n + 1)); { user "next?"; asst "$s"; } > "$T/rq$n.jsonl"; check "(e2) not a state request: $s" "$T/rq$n.jsonl" allow "$R"; done
+# the harness's own read tools are a read (finding 2)
+{ user "flash it"; tool Read "/tmp/flash.log"; tool ScheduleWakeup ""; asst "Tell me when the board is on USB."; } > "$T/ra9.jsonl"
+check "(e2) report ask after a Read, wakeup armed" "$T/ra9.jsonl" allow "$R"
 
 # --- case selection (2026-11-27: the gate ran as a recorder because 140 of 148 hits were the standing
 # watch; the 4 hand-step hits drowned). One row blocks on some cases, a second row records the rest.
@@ -409,6 +416,11 @@ check "--skip hand-step,reload: a report ask still blocks (its own case)" "$T/ra
 GA=(--only=hand-step); check "--only=<names> form" "$T/h1.jsonl" block "$R"
 GA=(--only hand-stp); out="$(gate "$T/h1.jsonl" "$R")"
 case "$out" in *'"decision":"block"'*) bad "unknown name: blocked anyway";; *"unknown case name"*"hand-stp"*) ok "unknown case name is said, not dropped";; *) bad "unknown name silent: '$out'";; esac
+# an empty --only is said and read as no flag (review of #698, finding 3)
+for GA in "--only" "--only=" "--only ,"; do
+  read -r -a GA <<< "$GA"; out="$(gate "$T/h1.jsonl" "$R")"
+  case "$out" in *'"decision":"block"'*"without case names"*|*"without case names"*'"decision":"block"'*) ok "empty selection (${GA[*]}): said and still blocks";; *) bad "empty selection (${GA[*]}): '$out'";; esac
+done
 GA=()
 
 # --- a ticket or a question posted on GitHub (class 2026-10-11: a ticket opened, covered only by a collab-watch that happened to run)

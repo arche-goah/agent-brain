@@ -142,10 +142,15 @@ const HAND_STEP_BUILTIN = [
   '\\bI\\s+need\\s+you\\s+to\\b',
 ];
 const NO_WATCHER_BUILTIN = ['⚙\\s*no\\s+watcher\\s*:'];
-// (e2) a state the human is asked to REPORT. Not "let me know if/whether" — that asks a preference.
+// (e2) a state the human is asked to REPORT. Not "let me know if/whether" — that asks a preference. Not a decision or a
+// fact question either (review of #698, Windows instance 2026-11-28: "let me know when you are ready", "tell me once
+// you have decided", "can you tell me when the show is", "let me know as soon as possible which option" were blocked):
+// the subject after the conjunction is no "you are ready / you have decided", no "possible", no which/what/whether, and
+// a "(can|could) you tell me" is a question.
+const NOT_A_STATE = "(?!\\s+(?:you(?:'re|\\s+are)\\s+ready|you(?:'ve|\\s+have)\\s+(?:decided|chosen|picked)|possible|which|what|whether)\\b)";
 const REPORT_ASK_BUILTIN = [
-  '\\b(?:tell|let)\\s+me\\s+(?:know\\s+)?(?:when|once|as\\s+soon\\s+as)\\b',
-  '\\breport\\s+back\\s+(?:when|once|as\\s+soon\\s+as)\\b',
+  `(?<!\\b(?:can|could)\\s+you\\s+)\\b(?:tell|let)\\s+me\\s+(?:know\\s+)?(?:when|once|as\\s+soon\\s+as)\\b${NOT_A_STATE}`,
+  `\\breport\\s+back\\s+(?:when|once|as\\s+soon\\s+as)\\b${NOT_A_STATE}`,
 ];
 // The case names of --only / --skip (header, CASE SELECTION).
 const CASES = ['shared-memory', 'pr-watch', 'reload', 'ci-watch', 'hand-step', 'report-ask', 'thread-ask', 'standing-watch', 'done-claim'];
@@ -158,6 +163,8 @@ function caseSelection(argv) {
   };
   const only = list('--only'); const skip = list('--skip');
   const unknown = [...(only || []), ...(skip || [])].filter((n) => !CASES.includes(n));
+  // an --only without names would switch every case off in silence (review of #698, finding 3): said, and read as no flag
+  if (only && !only.length) return { want: (n) => !(skip && skip.includes(n)), unknown: ['(--only without case names)'] };
   return { want: (n) => (!only || only.includes(n)) && !(skip && skip.includes(n)), unknown };
 }
 // (f) a ticket, or a comment that asks something.
@@ -809,7 +816,8 @@ function main(input) {
   if ((want('hand-step') || want('report-ask')) && !pats.noWatcher.test(lastText)) {
     const said = stripQuoted(lastText);
     const r = pats.reportAsk.exec(said);
-    const read = shell.length > 0 || calls.some((c) => c.name === 'Monitor' || /^mcp__/.test(c.name));
+    // the harness's own read tools count too (review of #698: a Read of a log plus a wakeup was called "never measured")
+    const read = shell.length > 0 || calls.some((c) => /^(?:Monitor|Read|Grep|Glob|WebFetch|WebSearch)$/.test(c.name) || /^mcp__/.test(c.name));
     const m = r || pats.handStep.exec(said);
     if (r && !read && want('report-ask')) {
       missing.push({ text: `a state is asked of the human ("${r[0].trim()}") that this turn never measured — read it first `
