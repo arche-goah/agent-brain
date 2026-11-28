@@ -8,6 +8,7 @@
 
 Usage: python3 scripts/recorder-report-test.py   (exit 0 = all fixtures pass)
 """
+import datetime
 import json
 import os
 import shutil
@@ -152,7 +153,39 @@ with tempfile.TemporaryDirectory() as td:
        res.returncode == 0 and line_in(res.stdout, "recorder report:").startswith("!! ")
        and "NOT countable" in res.stdout and "0 recorder(s)" not in res.stdout, res.stdout)
 
+# Windows review of #693 (2026-11-26): the dispatcher touches the log on every clean run, so the mtime is the
+# last run. A log touched today and one last touched in 2020 must not print the same line.
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    (root / ".claude/rules").mkdir(parents=True)
+    (root / ".claude-state").mkdir()
+    (root / "core/helpers").mkdir(parents=True)
+    for helper in ("stop-dispatcher.cjs", "turn-kind.cjs", "hook-exit.cjs"):
+        shutil.copy(HELPERS / helper, root / "core/helpers" / helper)
+    (root / ".claude/rules/stop-checks.json").write_text(json.dumps({"checks": [
+        {"label": "FRESH", "marker": "FRESH-GATE", "cmd": "core/helpers/fresh.cjs", "mode": "record"},
+        {"label": "STALE", "marker": "STALE-GATE", "cmd": "core/helpers/stale.cjs", "mode": "record"},
+        {"label": "NEVER", "marker": "NEVER-GATE", "cmd": "core/helpers/never.cjs", "mode": "record"},
+    ]}), encoding="utf-8")
+    st = root / ".claude-state"
+    (st / "fresh-gate.jsonl").write_text("", encoding="utf-8")
+    (st / "stale-gate.jsonl").write_text("", encoding="utf-8")
+    old = 1577836800  # 2020-01-01T00:00:00Z
+    os.utime(st / "stale-gate.jsonl", (old, old))
+    today = datetime.date.today().isoformat()
+    out = subprocess.run([sys.executable, str(REPORT), "--root", str(root), "--days", "14", "--today", today],
+                         capture_output=True, text=True, encoding="utf-8").stdout
+    ok("an empty log written today: 0 entries, its last run named, nothing due",
+       not line_in(out, "FRESH:").startswith("!!") and "0 entries" in line_in(out, "FRESH:")
+       and f"last run {today}" in line_in(out, "FRESH:"), line_in(out, "FRESH:"))
+    ok("a log last written before the window is a decision due, with its date",
+       line_in(out, "STALE:").startswith("!! ") and "last written 2020-01-0" in line_in(out, "STALE:"),
+       line_in(out, "STALE:"))
+    ok("no log says the recorder never ran clean, not 'never fired'",
+       "never ran clean" in line_in(out, "NEVER:") and "never fired" not in out, line_in(out, "NEVER:"))
+    ok("summary counts the stale log as due", "3 recorder(s), 1 with a decision due" in out, out)
+
 if fails:
     print(f"recorder-report-test: {len(fails)} FAILURE(S)")
     sys.exit(1)
-print("recorder-report-test: all 14 fixtures passed")
+print("recorder-report-test: all 18 fixtures passed")

@@ -150,8 +150,9 @@ for c in checks:
         continue
     log = f"{c.get('marker', '').lower()}.jsonl"
     # A gate may keep a log of its own instead (promise-gate: promises.jsonl, read by
-    # skill session-close) — then the dispatcher's log never exists, and the own log is
-    # the one that needs a reader.
+    # skill session-close) — then the dispatcher's log holds no rows (it is still created,
+    # empty, on every clean run since core #693), and the own log is the one that needs a
+    # reader.
     gate = c.get("cmd", "")
     own = set(re.findall(r"['\"]([\w.-]+\.jsonl)['\"]", sources.get(gate, ""))) - {log}
     if own:

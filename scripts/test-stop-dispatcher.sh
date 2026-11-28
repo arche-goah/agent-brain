@@ -223,6 +223,32 @@ printf '{"probe":"kept"}\n' > "$RLOG"; touch -t 202001010000 "$RLOG"
 feed3
 if grep -q kept "$RLOG" && [ "$(find "$RLOG" -newermt 2021-01-01 2>/dev/null)" ]; then ok "an empty run keeps the rows and moves the mtime"
 else bad "an empty run lost rows or left the mtime"; fi
+# Only a CLEAN run leaves the trace (Windows review of #693): output that is no JSON, or a block without a
+# reason, is no clean run - the file stays absent and the recorder reads as stale, not as idle and healthy.
+printf '%s\n' "console.log('not json at all')" > "$REC"; inprobe "$CFG3" "$REC" >/dev/null
+rm -f "$RLOG"; feed3
+if [ ! -f "$RLOG" ]; then ok "unparseable output is no clean run (no file)"
+else bad "unparseable output left the empty-run file"; fi
+printf '%s\n' "console.log(JSON.stringify({decision:'block'}))" > "$REC"; inprobe "$CFG3" "$REC" >/dev/null
+rm -f "$RLOG"; feed3
+if [ ! -f "$RLOG" ]; then ok "a block without a reason is no clean run (no file)"
+else bad "a block without a reason left the empty-run file"; fi
+printf '%s\n' "" > "$REC"; inprobe "$CFG3" "$REC" >/dev/null
+rm -f "$RLOG"; feed3
+if [ -f "$RLOG" ] && [ ! -s "$RLOG" ]; then ok "a recorder that prints nothing ran clean (empty file)"
+else bad "a recorder that prints nothing left no file"; fi
+# A marker that is no plain file name records nothing - neither a hit nor an empty run climbs out of .claude-state
+printf '%s\n' "console.log(JSON.stringify({}))" > "$REC"; inprobe "$CFG3" "$REC" >/dev/null
+cp "$CFG3/.claude/rules/stop-checks.json" "$T/stop-checks.keep"
+printf '{"checks":[{"label":"ESC","marker":"../../escaped","cmd":"%s","mode":"record"}]}' \
+  "$(inprobe "$CFG3" "$REC")" > "$CFG3/.claude/rules/stop-checks.json"
+feed3
+printf '%s\n' "console.log(JSON.stringify({record:[{probe:'hit'}]}))" > "$REC"; inprobe "$CFG3" "$REC" >/dev/null
+feed3
+if [ -z "$(find "$CFG3" "$(dirname "$CFG3")" -maxdepth 2 -name 'escaped.jsonl' 2>/dev/null)" ]; then
+  ok "a marker with a path in it writes no log outside .claude-state"
+else bad "a marker with a path in it wrote outside .claude-state"; rm -f "$(dirname "$CFG3")/escaped.jsonl"; fi
+cp "$T/stop-checks.keep" "$CFG3/.claude/rules/stop-checks.json"
 
 # --- a gate without --record in a recorder slot: its block is recorded, never shown ---
 # premise-gate has no record mode; until 2026-10-23 its block was dropped in a record slot
