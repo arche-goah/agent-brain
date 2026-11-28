@@ -58,6 +58,12 @@ function shellSegments(cmd, ps) {
   for (let i = 0; i < cmd.length; i++) {
     const c = cmd[i];
     if (q === "'") { if (c === "'") q = ''; else word += c; continue; }
+    // a backslash before a newline is a line continuation: the shell removes both (review of agent-brain #680,
+    // 2026-11-26, Windows: `gh \` + `pr comment 5 --body x` on the next line read as the word "\npr", no gh post)
+    if (c === '\\' && !ps && (cmd[i + 1] === '\n' || (cmd[i + 1] === '\r' && cmd[i + 2] === '\n'))) {
+      i += cmd[i + 1] === '\r' ? 2 : 1;
+      continue;
+    }
     if (c === '\\' && !ps && (!q || /[$`"\\\n]/.test(cmd[i + 1] || ''))) {
       begin(i);
       word += cmd[i + 1] || '';

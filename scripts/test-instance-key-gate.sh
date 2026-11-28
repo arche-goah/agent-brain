@@ -80,6 +80,35 @@ probe "the same script with the key" "bash $(native "$SC/key.sh") 5" allow
 probe "a script that posts nothing" "bash $(native "$SC/quiet.sh")" allow
 probe "a script whose body file comes at run time" "bash $(native "$SC/runtime.sh") 5 body.md" allow
 probe "a script the gate cannot read (variable path)" 'bash "$NOSUCHDIR/nokey.sh" 5' allow
+# The core's own guard fixtures, as public-text-guard reads them (#614, operator 2026-11-18 "Ja, eng begrenzt"): their gh
+# commands are probes against throw-away repos and a fake gh. Measured 2026-11-25 on the macOS instance: a hand run of
+# scripts/test-public-text-guard.sh was refused here ("carries no instance key") after public-text-guard let it pass.
+FX="$T/fxcore"; mkdir -p "$FX/scripts" "$FX/helpers"; : > "$FX/helpers/public-text-guard.cjs"
+cp "$SC/nokey.sh" "$FX/scripts/test-guards.sh"; cp "$SC/nokey.sh" "$FX/scripts/test-public-text-guard.sh"; cp "$SC/nokey.sh" "$FX/scripts/test-other.sh"
+cp -R "$FX" "$T/fxfake"; git init -q "$T/fxfake"; git -C "$T/fxfake" remote add origin https://github.com/o/pub.git
+git init -q "$FX"; git -C "$FX" remote add origin https://github.com/arche-goah/agent-brain.git
+probe "the core's guard fixture test-guards.sh is not read as posts" "bash $(native "$FX")/scripts/test-guards.sh" allow
+probe "the core's guard fixture test-public-text-guard.sh is not read as posts" "bash $(native "$FX")/scripts/test-public-text-guard.sh" allow
+probe "another script beside the guard is read (control)" "bash $(native "$FX")/scripts/test-other.sh 5" block
+probe "the same layout in another repo is read (control)" "bash $(native "$T")/fxfake/scripts/test-guards.sh 5" block
+# A heredoc makes a script unreadable as a whole; it is then read line by line (2026-11-25: one heredoc turned the JSON
+# data "Bash(gh pr create*)" of scripts/test-template-drift.sh into a post, six refused runs).
+printf '%s\n' '#!/usr/bin/env bash' 'cat > x.txt <<EOF' 'y' 'EOF' "printf '%s' '{\"allow\":[\"Bash(gh pr create*)\"]}' > t.json" > "$SC/heredoc-data.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'cat > x.txt <<EOF' 'y' 'EOF' "$G pr comment 5 -R o/r --body \"fixed\"" > "$SC/heredoc-post.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'cat > x.txt <<EOF' 'y' 'EOF' "$G pr comment 5 -R o/r --body \"line one" 'line two"' > "$SC/heredoc-multi.sh"
+probe "a script with a heredoc whose gh text is only data" "bash $(native "$SC/heredoc-data.sh")" allow
+probe "a script with a heredoc and a real post without the key (control)" "bash $(native "$SC/heredoc-post.sh")" block
+probe "a multi-line post in a script with a heredoc (control)" "bash $(native "$SC/heredoc-multi.sh")" block
+# Review of #680 (2026-11-26, Windows): a backticked gh call in a script's COMMENT line is no post (scripts/
+# test-content-review-gate.sh was refused by hand), and a `gh \` continued onto the next line is one (it passed).
+printf '%s\n' '#!/usr/bin/env bash' '# the gate reads `env -C <clone> gh pr create` as the create' 'echo ok' > "$SC/comment-tick.sh"
+printf '%s\n' '#!/usr/bin/env bash' "$G \\" '  pr comment 5 -R o/r --body "fixed"' > "$SC/cont-post.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'cat > x.txt <<EOF' 'y' 'EOF' "$G \\" '  pr comment 5 -R o/r --body "fixed"' > "$SC/cont-heredoc.sh"
+probe "a backticked gh call in a script's comment line is no post" "bash $(native "$SC/comment-tick.sh")" allow
+probe "a gh post continued onto the next line (control)" "bash $(native "$SC/cont-post.sh")" block
+probe "a continued gh post in a script with a heredoc (control)" "bash $(native "$SC/cont-heredoc.sh")" block
+probe "a continued gh post in the command itself (control)" "$G \\
+  pr comment 5 -R o/r --body fixed" block
 
 # The block message names the exact line to add (an agent must not have to guess the key).
 out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 5 --body hi"}}' \

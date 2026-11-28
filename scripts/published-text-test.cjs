@@ -25,6 +25,11 @@ ok('a heredoc is not read', p.shellSegments(`${G} pr comment 1 --body "$(cat <<'
 ok('an unbalanced quote is not read', p.shellSegments(`git commit -m "open`, false) === null);
 ok('PowerShell keeps backslashes', p.shellSegments('x C:\\a\\b', true)[0][1] === 'C:\\a\\b');
 ok('bash unquoted backslash escapes', p.shellSegments('x a\\ b', false)[0][1] === 'a b');
+// review of #680 (2026-11-26): a backslash-newline is a line continuation, the two lines are one command
+s = p.shellSegments(`${G} \\\n  pr comment 5 --body x`, false);
+ok('a line continuation joins the command', s.length === 1 && s[0].slice(0, 3).join('|') === `${G}|pr|comment`, s);
+s = p.shellSegments(`${G} \\\r\n  pr comment 5 --body "a \\\nb"`, false);
+ok('a CRLF continuation and one inside double quotes', s.length === 1 && s[0][2] === 'comment' && s[0][5] === 'a b', s);
 
 // publishedText
 let t = p.publishedText(`${G} pr create --title T --body-file f.md -f k=v -F n=@g.md`, false);
