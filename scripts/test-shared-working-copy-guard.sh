@@ -182,6 +182,16 @@ if [ -n "$BUSY_SH" ]; then
     probe "a new branch on ANOTHER start point (switch -c n other)" "$ONE" "git -C $PRIV_N switch -c side fixture-lookalike" block
     probe "a new branch on another start point (checkout -b n other)" "$ONE" "git -C $PRIV_N checkout -b side fixture-lookalike" block
     probe "clean -Xdf under the run"                    "$ONE" "git -C $PRIV_N clean -Xdf"                     block
+    # Windows review of #692, round two (2026-11-27): the branch name inside the option token, the start point the one positional
+    probe "a new branch on another start point (switch --create=n other)" "$ONE" "git -C $PRIV_N switch --create=side fixture-lookalike" block
+    probe "the same with --force-create=n other"        "$ONE" "git -C $PRIV_N switch --force-create=side fixture-lookalike" block
+    probe "a new branch on the same commit (switch --create=n)" "$ONE" "git -C $PRIV_N switch --create=side"   allow
+    # named follow-ups taken into the train: a forced checkout discards files without a positional; a marked
+    # worktree removed from another checkout loses its files under the run
+    probe "checkout -f under the run"                   "$ONE" "git -C $PRIV_N checkout -f"                    block
+    probe "switch -c n --discard-changes under the run" "$ONE" "git -C $PRIV_N switch -c side --discard-changes" block
+    probe "worktree remove of the marked worktree from the main checkout" "$ONE" "git -C $REPO_N worktree remove --force $PRIV_N" block
+    probe "worktree remove of an unmarked worktree"     "$ONE" "git -C $REPO_N worktree remove --force $(native "$PRIVW")-absent" allow
     probe "commit by path under the run"                "$ONE" "git -C $PRIV_N commit a.txt -m x"              allow
     probe "marker opens it"                             "$ONE" "git -C $PRIV_N switch fixture-lookalike  # MECHANISM-OK: fixture" allow
     probe "the sibling worktree is not busy"            "$ONE" "git -C $(native "$PRIVW") switch fixture-lookalike" allow
