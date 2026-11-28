@@ -98,6 +98,31 @@ rc, out = run(["needle"], [{"number": 701, "title": "crlf", "diff": DIFF_SQL.rep
 check("#701 db/q.sql:10 + tail needle b" in out, "a CRLF diff reads the same")
 rc, out = run(["x"], [])
 check(rc == 1 and "0 open PR(s)" in out, "no open PR: exit 1, the count said")
+# Windows review 2026-11-27: a hunk whose counts exceed its lines (truncated or miscounted) must not swallow the
+# next file's header - `diff --git ` is never hunk content, so it ends the hunk
+DIFF_SHORT = """diff --git a/a.txt b/a.txt
+--- a/a.txt
++++ b/a.txt
+@@ -1,5 +1,5 @@
+ one
+-two
+diff --git a/b.txt b/b.txt
+--- a/b.txt
++++ b/b.txt
+@@ -1,1 +1,1 @@
+-old
++needle in b
+"""
+rc, out = run(["needle"], [{"number": 702, "title": "short", "diff": DIFF_SHORT}])
+check("#702 b.txt:1 + needle in b" in out and "a.txt" not in out.split("hit(s)")[0],
+      "a truncated hunk: the next file's hit keeps the next file's path")
+# Windows review 2026-11-27: a PR whose diff could not be read is not counted as searched
+SKIPPED = [{"number": 703, "title": "fine", "diff": DIFF_618}, {"number": 704, "title": "broken", "unreadable": True}]
+rc, out = run(["needle"], SKIPPED)
+check(rc == 2, "no hit while a diff was unreadable: exit 2, not a clean no-hit")
+check("1 of 2 open PR(s)" in out and "#704" in out, "the summary names the searched count and the skipped PR")
+rc, out = run(["SHELL_TOOLS"], SKIPPED)
+check(rc == 0 and "1 not readable" in out, "a hit with a skipped PR: exit 0, the summary still names the skip")
 
 print("pr-diff-search-test: " + ("PASS" if not fails else f"{fails} FAIL"))
 sys.exit(1 if fails else 0)

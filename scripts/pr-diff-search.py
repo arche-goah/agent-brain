@@ -9,13 +9,15 @@ Usage:
   python3 scripts/pr-diff-search.py <regex> [-R owner/repo] [-i]
 Prints one line per changed line that matches: `#<nr> <path>:<line> <+|-> <text>` (line = new-side number for
 `+`, old-side for `-`), then a summary. Only added and removed lines are searched, never context.
-Exit: 0 = at least one hit, 1 = no hit, 2 = error (gh missing, repo unknown, bad regex) - like grep.
+Exit: 0 = at least one hit, 1 = no hit, 2 = error (gh missing, repo unknown, bad regex, or no hit while a PR's
+diff was unreadable - that PR was not searched) - like grep.
 The repo defaults to the origin of the current directory's git repo.
 Git Bash on Windows rewrites an argument that starts with `/` into a Windows path before Python sees it (MSYS path
 conversion): `'/tmp/out'` arrives as `C:/Program Files/Git/tmp/out` and gives "no hit". Write `'[/]tmp/out'`, or
 run from PowerShell, which passes it unchanged (Windows review 2026-11-26). A PR whose diff cannot be read is named
-and skipped; the others are still searched.
-Test fixture via PR_DIFF_FIXTURE (path to JSON {"repo": ..., "prs": [{"number", "title", "diff"}]}).
+and skipped; the others are still searched, and the summary names the skipped ones.
+Test fixture via PR_DIFF_FIXTURE (path to JSON {"repo": ..., "prs": [{"number", "title", "diff"}]}; a PR with
+"unreadable": true stands for one whose diff could not be read).
 Test: scripts/pr-diff-search-test.py.
 """
 import argparse
@@ -52,14 +54,17 @@ def hits_in(diff, rx):
     # `---` / `+++` are headers only OUTSIDE a hunk: inside one, a removed `-- comment` or an added `++ x` line is
     # content (Windows review 2026-11-26: such a line was read as a header, its hit lost, the path replaced). A hunk
     # ends when its counts from the `@@` header are used up. split("\n"), not splitlines(): a form feed or U+2028 in
-    # a changed line must not start a new line.
+    # a changed line must not start a new line. `diff --git ` ends any hunk without condition: hunk content starts
+    # with space, `+`, `-` or `\`, never `d`, and a truncated or miscounted hunk would otherwise swallow the next
+    # file's header and print its hits under the previous path (Windows review 2026-11-27).
     path, old, new, old_left, new_left = None, 0, 0, 0, 0
     for raw in diff.split("\n"):
         raw = raw[:-1] if raw.endswith("\r") else raw
+        if raw.startswith("diff --git "):
+            path, old_left, new_left = None, 0, 0
+            continue
         in_hunk = old_left > 0 or new_left > 0
-        if not in_hunk and raw.startswith("diff --git "):
-            path = None
-        elif not in_hunk and raw.startswith("--- "):
+        if not in_hunk and raw.startswith("--- "):
             p = raw[4:].strip()
             path = None if p == "/dev/null" else (p[2:] if p.startswith("a/") else p)
         elif not in_hunk and raw.startswith("+++ "):
@@ -101,7 +106,7 @@ def load(repo):
             p["diff"] = gh(["pr", "diff", str(p["number"]), "-R", repo])
         except (OSError, subprocess.SubprocessError) as e:
             print(f"pr-diff-search: #{p['number']} diff not readable, skipped ({type(e).__name__})", file=sys.stderr)
-            p["diff"] = ""
+            p["diff"], p["unreadable"] = "", True
     return repo, prs
 
 
@@ -125,8 +130,15 @@ def main(argv=None):
     except (OSError, subprocess.SubprocessError, ValueError, KeyError) as e:
         print(f"pr-diff-search: could not read the open PRs: {e}", file=sys.stderr)
         return 2
+    # A skipped PR is not searched: the summary counts only the read diffs and names the skipped ones, and "no hit"
+    # with a skipped PR is exit 2 - the absence was not measured there (Windows review 2026-11-27).
+    skipped = [f"#{p['number']}" for p in prs if p.get("unreadable")]
+    searched = len(prs) - len(skipped)
+    note = f" ({len(skipped)} not readable, skipped: {', '.join(skipped)})" if skipped else ""
     total, with_hits = 0, []
     for p in prs:
+        if p.get("unreadable"):
+            continue
         n = 0
         for path, line, sign, text in hits_in(p.get("diff") or "", rx):
             print(f"#{p['number']} {path}:{line} {sign} {text.strip()[:200]}")
@@ -135,10 +147,12 @@ def main(argv=None):
             with_hits.append(f"#{p['number']} {str(p.get('title', ''))[:60]} ({n})")
         total += n
     if total:
-        print(f"{total} hit(s) in {len(with_hits)} of {len(prs)} open PR(s) of {repo}: " + "; ".join(with_hits))
+        print(f"{total} hit(s) in {len(with_hits)} of {searched} searched open PR(s) of {repo}{note}: "
+              + "; ".join(with_hits))
         return 0
-    print(f"no hit in the diffs of {len(prs)} open PR(s) of {repo}")
-    return 1
+    print(f"no hit in the diffs of {searched} of {len(prs)} open PR(s) of {repo}{note}" if skipped
+          else f"no hit in the diffs of {len(prs)} open PR(s) of {repo}")
+    return 2 if skipped else 1
 
 
 if __name__ == "__main__":
