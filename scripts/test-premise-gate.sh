@@ -120,6 +120,34 @@ echo_case label-echo-in-a-list '"Stop hook feedback:\nSTOP-CHECKS (2)\n· CLASS 
 echo_case legacy-token-echo '"Stop hook feedback:\nPREMISE — x   [PREMISE-GATE]"' allow
 echo_case foreign-label-echo '"Stop hook feedback:\nCLASS — premise.cjs changed"' block
 
+# --- a question-tool answer arrives inside the turn (turn-kind.cjs turnWindows, Windows review 2026-11-26). A premise put
+# to the operator BEFORE the answer is not judged after it - the decision is made, a late hold changes nothing (replay
+# 2026-11-28: 9 more holds, none still open; debt: its place is the question tool's PreToolUse). A premise AFTER the
+# answer is judged, with the turn's actions from its start.
+answer_case() { # $1 name, $2 prompt between (or -), $3 block|allow
+  local tr="$T/answer-$1.jsonl" out
+  { printf '%s\n' '{"message":{"role":"user","content":"frage"}}'
+    printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"text","text":"In a conflict the one who lets go last always wins."},{"type":"tool_use","id":"qa1","name":"AskUserQuestion","input":{}}]}}'
+    printf '%s\n' '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"qa1","content":"The user answered: the first"}]}}'
+    [ "$2" = "-" ] || printf '{"message":{"role":"user","content":"%s"}}\n' "$2"
+    printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"text","text":"Done."}]}}'; } > "$tr"
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$tr")" "$(native "$T")" | node "$G" 2>&1)"
+  if [ "$3" = block ]; then
+    case "$out" in *PREMISE-GATE*) ok "$1 blocks";; *) bad "$1 did not block: '$out'";; esac
+  else
+    [ -z "$out" ] && ok "$1 allows" || bad "$1 blocked wrongly: '$out'"
+  fi
+}
+answer_case premise-before-answer - allow
+answer_case premise-before-a-new-prompt "next thing" allow
+tr="$T/answer-write-before.jsonl"
+{ printf '%s\n' '{"message":{"role":"user","content":"frage"}}'
+  printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"x.md","content":"y"}},{"type":"tool_use","id":"qa2","name":"AskUserQuestion","input":{}}]}}'
+  printf '%s\n' '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"qa2","content":"The user answered: go"}]}}'
+  printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"text","text":"In a conflict the one who lets go last always wins."}]}}'; } > "$tr"
+out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$tr")" "$(native "$T")" | node "$G" 2>&1)"
+case "$out" in *PREMISE-GATE*) ok "premise after the answer, files written before it: blocks";; *) bad "premise after answer with earlier write did not block: '$out'";; esac
+
 echo
 [ "$fail" -eq 0 ] && echo "premise-gate fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"

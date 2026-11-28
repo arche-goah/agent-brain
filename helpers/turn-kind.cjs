@@ -173,14 +173,19 @@ function questionAnswers() {
 /**
  * The two windows of a Stop gate over one pass of events (2026-11-25). Events carry `boundary: true` for an operator
  * prompt, `boundary: true, byAnswer: true` for a question-tool answer, `turnEnd: true` for `isTurnEnd`.
- *   words  - index of the newest operator word or turn end: the CLAIMS of the reply (a promise, an absence claim, a
- *            premise) are read after it - a claim written before the operator's answer was judged with its own stop.
- *   start  - index of the start of the TURN (the newest prompt or turn end, never an answer): the WORK that carries a
- *            claim (writes, reads, calls) counts from here - a question-tool answer arrives inside the turn.
+ *   start  - index of the start of the TURN (the newest prompt or turn end, never an answer): the CLAIMS of the reply
+ *            (a promise, an absence claim, a premise) and the WORK that carries them (writes, reads, calls) both count
+ *            from here - a question-tool answer arrives inside the turn.
+ *   words  - index of the newest operator word or turn end: the fallback when the tail holds no turn start at all
+ *            (every gate falls back to it the same way); premise-gate alone still reads its claims from here (its
+ *            reason stands there: a premise put in a question is decided once answered).
  * -1 = none. WHY (measured 2026-11-25 on the macOS instance): commitment-carrier-gate cut the window at a question-tool
  * answer, so a rule written and committed before the question counted as "no mechanism this turn" and the stop was
  * blocked twice; the same single cut ran in absence-, premise-, class-gate and stop-verifier (since 712e9c4,
  * 2026-10-30, where the answer boundary fixed a window that reached back hours - the turn end now bounds that).
+ * Claims count from `start` too, not from the answer: a question does NOT end the turn, no Stop hook runs between a
+ * question and its answer (measured 2026-11-26 on the Windows instance: 590 answered questions in 150 transcripts,
+ * 0 with a Stop run or a turn end in between), so a claim cut off at the answer was judged by no stop at all.
  */
 function turnWindows(events) {
   let words = -1;
@@ -199,6 +204,10 @@ function turnWindows(events) {
  * WHY (measured 2026-11-02 on the macOS instance): every later operator word arrived mid-turn
  * (queued_command) or as a question-tool answer, neither of which counts as a prompt; a first-turn gate
  * kept judging the whole session as its first reply.
+ * HARNESS CONTRACT the Stop gates depend on (turnWindows): the record is written AFTER the Stop hooks of the turn
+ * ran, never before them. Measured 2026-11-26 on the Windows instance: 3358 of 3380 records follow a
+ * `stop_hook_summary` directly. A harness that wrote it before the hooks would make every gate see an ended turn
+ * and pass without a sound; a fixture in `scripts/test-commitment-carrier-gate.sh` names that case.
  */
 function isTurnEnd(d) {
   return Boolean(d && d.type === 'system' && d.subtype === 'turn_duration');

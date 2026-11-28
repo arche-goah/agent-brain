@@ -130,6 +130,25 @@ echo_case label-echo '"Stop hook feedback:\nPROMISE — promise bound to a condi
 echo_case legacy-token-echo '"Stop hook feedback:\nPROMISE — x   [PROMISE-GATE]"' allow
 echo_case foreign-label-echo '"Stop hook feedback:\nPREMISE — x carries an action"' block
 
+# --- a question-tool answer arrives inside the turn (turn-kind.cjs turnWindows, Windows review 2026-11-26): no Stop
+# ran at the question, so a promise before it is judged at the turn's own stop; a turn end still closes it.
+answer_case() { # $1 name, $2 record between answer and reply (json line or -), $3 block|allow
+  local tr="$T/answer-$1.jsonl" out
+  { printf '%s\n' '{"message":{"role":"user","content":"frage"}}'
+    printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"text","text":"I will not commit or push anything while you are asleep."},{"type":"tool_use","id":"qa1","name":"AskUserQuestion","input":{}}]}}'
+    printf '%s\n' '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"qa1","content":"The user answered: ok"}]}}'
+    [ "$2" = "-" ] || printf '%s\n' "$2"
+    printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"text","text":"Done."}]}}'; } > "$tr"
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$tr")" "$(native "$T")" | node "$G" 2>&1)"
+  if [ "$3" = block ]; then
+    case "$out" in *PROMISE-GATE*) ok "$1 blocks";; *) bad "$1 did not block: '$out'";; esac
+  else
+    [ -z "$out" ] && ok "$1 allows" || bad "$1 blocked wrongly: '$out'"
+  fi
+}
+answer_case promise-before-answer - block
+answer_case promise-of-an-ended-turn '{"type":"system","subtype":"turn_duration","durationMs":1}' allow
+
 echo
 [ "$fail" -eq 0 ] && echo "promise-gate fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"

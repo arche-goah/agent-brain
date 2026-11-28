@@ -314,16 +314,16 @@ function analyze(transcriptPath, cwd, unreadableRx) {
     }
   }
 
-  // the absence claims from the newest operator word, the reads that back them from the start of the turn (turnWindows)
+  // the absence claims and the reads that back them, both from the start of the turn (turnWindows); no turn start
+  // in the tail = from the newest operator word, no boundary at all = the whole tail, as before
   const win = turnWindows(events);
-  const words = Math.max(win.words, 0);
-  const start = Math.max(win.start, 0);
+  const start = Math.max(win.start < 0 ? win.words : win.start, 0);
   const texts = [];
   const searched = [];
   const unreadable = [];
   let delegated = 0;
   for (let i = start; i < events.length; i++) {
-    if (events[i].text && i >= words) texts.push(events[i].text);
+    if (events[i].text) texts.push(events[i].text);
     if (events[i].searched) searched.push(...events[i].searched);
     for (const p of events[i].unreadable || []) if (!unreadable.includes(p)) unreadable.push(p);
     if (events[i].delegated) delegated += 1;

@@ -166,7 +166,10 @@ function analyze(transcriptPath) {
   }
 
   // the premises from the newest operator word, the actions that answer them from the start of the turn (turnWindows);
-  // no boundary at all = nothing, as before
+  // no boundary at all = nothing, as before. Unlike the other claim gates, a premise put to the operator BEFORE an
+  // answer is not judged after it: the decision it carried is made, a late hold changes nothing and costs a turn
+  // (replay 2026-11-28, macOS instance, 548 stops with an answer in the turn: claims from the turn start held 9 more,
+  // none of them still open). Its right place is the question tool's PreToolUse - named debt, not built here.
   const win = turnWindows(events);
   const fromWords = win.words < 0 ? events.length : win.words;
   const fromStart = win.start < 0 ? fromWords : win.start;

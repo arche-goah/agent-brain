@@ -102,9 +102,11 @@ function turnEvents(transcriptPath) {
       events.push({ kind: 'write', file, text, added });
     }
   }
-  // promises from the newest operator word, the writes that carry them from the start of the turn (turnWindows)
+  // promises and the writes that carry them both from the start of the turn (turnWindows); no turn start in the
+  // tail = from the newest operator word, as the other gates fall back (Windows review 2026-11-26, probe P6)
   const { words, start } = turnWindows(events);
-  return events.filter((e, i) => (e.kind === 'text' ? i > words : e.kind === 'write' && i > start));
+  const from = start < 0 ? words : start;
+  return events.filter((e, i) => i > from && (e.kind === 'text' || e.kind === 'write'));
 }
 
 function loadInstance(cwd) {
