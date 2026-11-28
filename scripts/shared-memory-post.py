@@ -204,13 +204,20 @@ def one_machine_unproven(one_machine, evidence, repo):
     if not e:
         return ("--one-machine needs --one-machine-evidence: a URL, a file path[:line] that exists, or the operator's "
                 "quoted words with their date - a reason without evidence does not address one machine")
-    if re.match(r"https?://\S+$", e):
+    # One definition of the forms: the lint's `evidence_kind` (Windows review of #694, 2026-11-26: the post took
+    # paths the lint's check 9b then refused). The post adds what only the writer can check: the file exists.
+    kind = _lint.evidence_kind(e)
+    if kind in ("url", "quote"):
         return ""
     p = re.sub(r":\d+$", "", e)
-    if (Path(repo) / p).is_file() or Path(p).is_file():
+    if os.name == "nt" and re.match(r"/[A-Za-z]/", p):
+        p = f"{p[1]}:{p[2:]}"   # the Git Bash form /c/... of a Windows path
+    exists = (Path(repo) / p).is_file() or Path(p).is_file()
+    if kind == "path" and exists:
         return ""
-    if re.search(r"[\"„“'«].{3,}[\"“”'»]", e) and re.search(r"\b20\d\d-\d\d-\d\d\b", e):
-        return ""
+    if exists:
+        return (f"--one-machine-evidence \"{e}\" names a file, but in a form the lint's check 9b refuses (a space in "
+                "the path) - give it relative to the shared memory, or a path without spaces")
     return (f"--one-machine-evidence \"{e}\" is no evidence a reader can open: give a URL, an existing file "
             "path[:line], or the operator's quoted words with their date")
 
@@ -364,6 +371,14 @@ def main() -> int:
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     sys.stderr.reconfigure(encoding="utf-8")
+    # One-line fields land in the LOG heading and in frontmatter: a line break inside one splits both. A break
+    # at the ends (a pasted Windows line, a here-string) is dropped; one inside is refused (Windows review of #694,
+    # 2026-11-26: a trailing CR went out raw and the lint read the value cut at it).
+    for name in ("title", "one_machine", "one_machine_evidence", "ci_not_green_ok", "hand_check_ok"):
+        v = getattr(a, name).strip("\r\n")
+        if re.search(r"[\x00-\x08\x0a-\x1f\x7f]", v):
+            return refuse(f"--{name.replace('_', '-')} holds a line break or control character - it is one line")
+        setattr(a, name, v)
 
     me = [t for t in os.environ.get("SHARED_MEMORY_SELF", "").replace(",", " ").split() if t]
     if not me:
@@ -486,7 +501,14 @@ def main() -> int:
         return refuse(f"the LOG line is {over} B over the entry cap of {_lint._rotate.ENTRY_CAP} B - shorten "
                       "--title (the file name follows it) or --one-machine; the substance belongs in the body")
 
-    q = '"' + a.title.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    # Free text goes out as a double-quoted YAML scalar (2026-11-25: an unquoted `Alex 2026-11-25: "..."` was read back
+    # by the lint without its closing quote and failed check 9b; the lint's frontmatter reader resolves this form).
+    # Control characters are escaped too (Windows review of #694: a lone trailing CR from a pasted Windows line went
+    # out raw and the lint's splitlines() cut the value there); the lint's `unquote` resolves \n \r \t.
+    def yq(s):
+        return '"' + (s.replace("\\", "\\\\").replace('"', '\\"')
+                      .replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")) + '"'
+    q = yq(a.title)
     # The writer's system and core version, written by the producer at write time (operator order
     # 2026-10-28; first asked 2026-10-18 and built then only as a commit trailer): activity per core
     # version is read from the entries (`device-status.py entries`). Same source as that trailer.
@@ -502,12 +524,12 @@ def main() -> int:
     if dropped:
         meta.append(f"  except: {', '.join(dropped)}")
     if a.one_machine:
-        meta.append(f"  one-machine: {a.one_machine}")
-        meta.append(f"  one-machine-evidence: {a.one_machine_evidence}")
+        meta.append(f"  one-machine: {yq(a.one_machine)}")
+        meta.append(f"  one-machine-evidence: {yq(a.one_machine_evidence)}")
     if a.ci_not_green_ok:
-        meta.append(f"  ci-not-green-ok: {a.ci_not_green_ok}")
+        meta.append(f"  ci-not-green-ok: {yq(a.ci_not_green_ok)}")
     if a.hand_check_ok:
-        meta.append(f"  hand-check-ok: {a.hand_check_ok}")
+        meta.append(f"  hand-check-ok: {yq(a.hand_check_ok)}")
     text = "---\n" + f"name: {stem}\ndescription: {q}\nmetadata:\n" + "\n".join(meta) + "\n---\n\n" + body.strip() + "\n"
     log = area_dir / "LOG.md"
     old = log.read_text(encoding="utf-8")
