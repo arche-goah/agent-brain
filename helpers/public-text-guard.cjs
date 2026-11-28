@@ -112,9 +112,14 @@ function commandParts(cmd) {
 }
 const commandTexts = (cmd) => commandParts(cmd).map((p) => p.judge);
 
-function isWrite(cmd) {
+function isWrite(cmd, cwd, ps) {
   const texts = commandTexts(cmd);
   if (texts.some((t) => WRITE_RX.some((rx) => rx.test(t)) || AUTHOR_RX.test(t))) return true;
+  // the git calls that carry a text or an author, read by the shared reader from the ONE list below (review of #679,
+  // 2026-11-26, Windows: isWrite kept its own regex list - `git notes add -m`, `git merge -m`, `git -c x=y -C <dir>
+  // commit`, `git --git-dir=<dir>/.git commit` and `-C a\ b commit` were no write, and `commit-tree` was one only
+  // through the regex's `\b`, while the target reader did not count it)
+  if (textCalls(cmd, cwd, ps).length) return true;
   // over the command parts as judged (quoted data emptied), not the raw text: a quoted `gh api … -f x` is a probe
   // argument, not a call (2026-11-18, the same 7-of-14 measurement)
   for (const m of texts.join('\n').matchAll(GH_API_RX)) {
@@ -174,7 +179,7 @@ function slugFromRemote(dir) {
   }
 }
 
-function targetRepos(cmd, cwd) {
+function targetRepos(cmd, cwd, ps) {
   const slugs = new Set();
   for (const m of cmd.matchAll(/(?:-R|--repo)[=\s]+("?)([\w.-]+\/[\w.-]+)\1/g)) slugs.add(m[2]);
   // `-R "$1"` (a script's argument, a variable): the repo is chosen at run time - unknown, not the cwd's
@@ -187,7 +192,7 @@ function targetRepos(cmd, cwd) {
     // script was held as a post to the public core - the first `git -C` was a read in the core submodule, or with
     // the older reader a comment, and the brain's commit author became "a name for a public repo"). The commit's
     // target is the folder the commit runs in.
-    for (const dir of publishingDirs(cmd, cwd)) {
+    for (const dir of publishingDirs(cmd, cwd, ps)) {
       const s = dir === '?' ? '?' : slugFromRemote(dir);
       if (s) slugs.add(s);
     }
@@ -202,25 +207,42 @@ function targetRepos(cmd, cwd) {
 // before, the whole text fell back to the cwd, and a named commit into a public clone passed from a private folder
 // (measured 2026-11-25). What none of that reads keeps the cwd, as before.
 // ponytail: line by line drops a `cd` of an earlier line, the call then counts in the cwd.
-const PUBLISHING = ['commit', 'tag', 'notes', 'push'];
+// ONE list of the git calls that publish, read by isWrite and by the target (review of #679, 2026-11-26): the calls that
+// carry a message or the author, and push, which sends them.
+const GIT_TEXT_CALLS = ['commit', 'commit-tree', 'tag', 'notes', 'merge'];
+const PUBLISHING = [...GIT_TEXT_CALLS, 'push'];
 // one plain word, no nested repetition (CodeQL on the first version: exponential backtracking); the shell reader decides
 // whether the line up to the word holds a publishing git call
-const PUBLISH_WORD = /\b(?:commit|tag|notes|push)\b/g;
-function lineCalls(l, cwd) {
+const PUBLISH_WORD = /\b(?:commit-tree|commit|tag|notes|merge|push)\b/g;
+// each word re-reads the line up to it: quadratic in the words of one unreadable line (review of #679: 20000 words took
+// 8.5 s) - the first ones are read, a line past the cap keeps the cwd, as before this PR
+const LINE_WORD_CAP = 32;
+function lineCalls(l, cwd, ps) {
   const { gitCalls } = require('./git-target.cjs');
-  const all = gitCalls(l, cwd);
+  const all = gitCalls(l, cwd, ps);
   if (all) return all;
+  let n = 0;
   for (const m of l.matchAll(PUBLISH_WORD)) {
-    const calls = gitCalls(l.slice(0, m.index + m[0].length), cwd) || [];
+    if (++n > LINE_WORD_CAP) break;
+    const calls = gitCalls(l.slice(0, m.index + m[0].length), cwd, ps) || [];
     if (calls.some((c) => PUBLISHING.includes(c.sub))) return calls;
   }
   return [];
 }
-function publishingDirs(cmd, cwd) {
+function allCalls(cmd, cwd, ps) {
   const { gitCalls } = require('./git-target.cjs');
-  const whole = gitCalls(cmd, cwd);
-  const calls = whole || cmd.split('\n').flatMap((l) => lineCalls(l, cwd));
-  const dirs = [...new Set(calls.filter((c) => PUBLISHING.includes(c.sub)).map((c) => c.dir))];
+  return gitCalls(cmd, cwd || process.cwd(), ps) || String(cmd).split('\n').flatMap((l) => lineCalls(l, cwd || process.cwd(), ps));
+}
+const textCalls = (cmd, cwd, ps) => allCalls(cmd, cwd, ps).filter((c) => GIT_TEXT_CALLS.includes(c.sub));
+// A text goes where the call that carries it runs; a push in the same command sends commits made before, which were
+// judged when they were made (review of #679, probe 17: `git -C <private> commit -m "<name>"; git -C <public> push`
+// was held - the private message judged against the public push). So the push's folder counts only when no call
+// in the command carries a text.
+function publishingDirs(cmd, cwd, ps) {
+  const calls = allCalls(cmd, cwd, ps);
+  const of = (subs) => [...new Set(calls.filter((c) => subs.includes(c.sub)).map((c) => c.dir))];
+  const text = of(GIT_TEXT_CALLS);
+  const dirs = text.length ? text : of(['push']);
   return dirs.length ? dirs : [cwd];
 }
 
@@ -291,7 +313,7 @@ const namesOf = (root) => [...new Set([...(watchList(root) || []), ...partiesLis
 function unreadableScript(input, cmd, cwd, s) {
   const root = brainRoot(input);
   if (!namesOf(root).length) return 0;
-  const repos = targetRepos(cmd, cwd);
+  const repos = targetRepos(cmd, cwd, input.tool_name === 'PowerShell');
   const open = repos.filter((r) => !['private', 'internal'].includes(visibility(r, root)));
   if (repos.length && !open.length) return 0;
   console.error(
@@ -338,7 +360,7 @@ function gate(input, script) {
     }
   }
   // a script's own comment lines are no commands (an apostrophe in one would open a quote for isWrite)
-  if (!isWrite(script ? cmd.replace(/^[ \t]*#.*$/gm, '') : cmd)) return 0;
+  if (!isWrite(script ? cmd.replace(/^[ \t]*#.*$/gm, '') : cmd, cwd, ps)) return 0;
   const root = brainRoot(input);
   const names = namesOf(root);
   if (!names.length) {
@@ -376,9 +398,9 @@ function gate(input, script) {
     readFiles(referencedFiles(cmd));
   }
   const a = commandParts(cmd).filter((p) => AUTHOR_RX.test(p.judge)).map((p) => AUTHOR_RX.exec(p.raw)).find(Boolean);
-  if (a) {
-    const dir = require('./git-target.cjs').gitTarget(cmd, cwd, false, ['commit', 'tag'])
-      || resolveFrom(cwd, a[3] ? unquote(a[3]) : '.');
+  const tc = textCalls(cmd, cwd, ps);
+  if (a || tc.length) {
+    const dir = (tc[0] && tc[0].dir) || (a && a[3] ? resolveFrom(cwd, unquote(a[3])) : cwd);
     try {
       const ident = execFileSync('git', ['-C', dir, 'var', 'GIT_AUTHOR_IDENT'],
         { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().replace(/\s+\d+\s+[+-]\d{4}\s*$/, '');
@@ -386,7 +408,7 @@ function gate(input, script) {
     } catch (e) { /* no identity: git refuses the commit itself */ }
   }
   if (!found.size && !unreadable.length && !published.some((t) => t.trim())) return 0;
-  const repos = targetRepos(cmd, cwd);
+  const repos = targetRepos(cmd, cwd, ps);
   const open = repos.filter((s) => visibility(s, root) !== 'private' && visibility(s, root) !== 'internal');
   if (repos.length && !open.length) return 0;
   const target = (open.filter((s) => s !== '?').join(', ') || 'a repo whose visibility is unknown') + (script ? ` (posted by the script ${script})` : '');

@@ -51,6 +51,8 @@ probe "git as an argument of another command is no call" "echo git -C /nodir sta
 probe "a call after if is a call (2026-11-25: it was not read)" 'if git -C /kwdir commit -q -m x; then echo ok; fi' "/kwdir|commit"
 probe "a call after do is a call" 'for f in a; do git -C /kwdir push; done' "/kwdir|push"
 probe "a call after ! is a call" '! git -C /kwdir diff --quiet' "/kwdir|diff"
+probe "--git-dir <dir> names the repository (review of #679)" "git --git-dir /gdir/.git commit -m x" "/gdir/.git|commit"
+probe "--git-dir=<dir> names the repository" "git --git-dir=/gdir/.git commit -m x" "/gdir/.git|commit"
 probe "a git -C in a comment line is no call" "$(printf '# see git -C /nodir status\ngit status')" "/cwd|status"
 case "${OSTYPE:-}" in
   msys*|cygwin*)

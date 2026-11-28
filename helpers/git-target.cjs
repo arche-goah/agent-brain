@@ -76,6 +76,10 @@ function gitCalls(cmd, cwd, ps) {
       const t = words[j];
       if (t === '-C' && words[j + 1] !== undefined) { here = abs(here, words[j + 1]); j += 2; continue; }
       if (/^-C./.test(t)) { here = abs(here, t.slice(2)); j += 1; continue; }
+      // `--git-dir <repo>/.git` names the repository too; git reads its remotes from there (review of agent-brain #679,
+      // 2026-11-26, Windows: `git --git-dir=<public>/.git commit` was judged in the cwd)
+      if (t === '--git-dir' && words[j + 1] !== undefined) { here = abs(here, words[j + 1]); j += 2; continue; }
+      if (t.startsWith('--git-dir=')) { here = abs(here, t.slice(10)); j += 1; continue; }
       if (WITH_VALUE.has(t)) { j += 2; continue; }
       j += 1;
     }

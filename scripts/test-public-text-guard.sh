@@ -326,6 +326,28 @@ expect "a private commit in a script with a here-string passes (control)"       
 LONG="$(printf 'git commit -q -m x\ncat <<< y\ngit %s commitx "' "$(printf -- '-! %.0s' $(seq 1 40))")"
 t0=$SECONDS; rc=$(run "$GATE" "$T/namedpriv" "$LONG"); dt=$((SECONDS - t0))
 [ "$dt" -le 3 ] && ok "an unreadable line with 40 '-! ' repeats is read in ${dt}s (rc=$rc)" || bad "the long line took ${dt}s"
+# Review of #679 (2026-11-26, Windows): ONE list of publishing git calls for isWrite and the target. commit-tree had
+# turned unsafe on this branch, notes was dead for the guard, merge, `-c x=y`, `--git-dir` and `-C a\ b` were no write.
+expect "commit-tree into a public clone blocks"                  block "$T/namedpriv" 'git -C ../namedclone commit-tree HEAD^{tree} -m "zorbalina"'
+expect "notes add into a public clone blocks"                    block "$T/namedpriv" 'git -C ../pubclone notes add -m "zorbalina asked"'
+expect "merge -m into a public clone blocks"                     block "$T/namedpriv" 'git -C ../pubclone merge --no-ff -m "zorbalina" x'
+expect "git -c x=y -C <public> commit blocks"                    block "$T/namedpriv" 'git -c user.name=x -C ../pubclone commit -m "zorbalina"'
+expect "git --git-dir=<public>/.git commit blocks"               block "$T/namedpriv" 'git --git-dir=../pubclone/.git commit -m "zorbalina"'
+mkdir -p "$T/pub space"; git init -q "$T/pub space"; git -C "$T/pub space" remote add origin https://github.com/o/pub.git
+expect "git -C with a backslash-escaped space blocks"            block "$T/namedpriv" 'git -C ../pub\ space commit -m "zorbalina"'
+expect "notes add into a private clone passes (control)"         allow "$T" "git -C $NT/privclone notes add -m \"zorbalina asked\""
+# probe 17: a push sends commits made before; a private commit's text is judged against the private folder only
+expect "a private commit, then a public push, passes"            allow "$T" "git -C $NT/privclone commit -m \"zorbalina\"; git -C $NT/pubclone push"
+expect "a public commit, then a private push, blocks (control)"  block "$T" "git -C $NT/pubclone commit -m \"zorbalina\"; git -C $NT/privclone push"
+# PowerShell: the target reader gets the shell (Set-Location '<dir>' was not read, the cwd was judged)
+got=$(node -e 'const g=require(process.argv[1]); process.stdout.write(g.targetRepos(process.argv[2], process.argv[3], true).join(","))' \
+  "$(native "$GATE")" "Set-Location '$(native "$T/pub space")'; git commit -m 'x'" "$(native "$T/privclone")")
+[ "$got" = "o/pub" ] && ok "PowerShell Set-Location before a commit names its repo" || bad "PowerShell Set-Location: got '$got'"
+# the unreadable-line search has a cap: 20000 publishing words in one unreadable line stay fast (8.5 s before)
+WORDS="$(printf 'open push tag notes commit %.0s' $(seq 1 4000))"
+LONG2="$(printf 'cat <<< y\ngit log --grep "%s' "$WORDS")"
+t0=$SECONDS; rc=$(run "$GATE" "$T/namedpriv" "$LONG2"); dt=$((SECONDS - t0))
+[ "$dt" -le 3 ] && ok "an unreadable line with 20000 publishing words is read in ${dt}s (rc=$rc)" || bad "the 20000-word line took ${dt}s"
 
 [ "$fail" -eq 0 ] && echo "public-text-guard: all checks passed" || echo "public-text-guard: FAILURE"
 exit "$fail"
