@@ -36,7 +36,10 @@ CHECKS (all read-only, no writes, stdlib only):
   9. audience        entries dated AUDIENCE_SINCE or later, when the repo carries
                      parties.json: every `audience` token resolves (device, person:<p>,
                      os:<os>, everyone); a Windows check — fact file or LOG heading — goes
-                     to os:windows unless it says `one-machine: <why>`.
+                     to os:windows unless it says `one-machine: <why>`. 9b: a request with
+                     `one-machine:` gives evidence, names more than the OS and, from
+                     ONE_MACHINE_TARGET_SINCE on, names its own target device when another
+                     device could take it (shared-memory-parties.one_machine_target_finding).
   10. fields         the routing fields (docs/shared-memory-fields.md), only where a file
                      USES them: `status` outside the vocabulary; `status: open` without
                      `next`; `next` naming no device of parties.json (when it exists);
@@ -828,6 +831,12 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
             if (str(meta.get("date", "")) >= ONE_MACHINE_EVIDENCE_SINCE and p.stem.startswith("request-")
                     and meta.get("one-machine")):
                 one_machine_findings(f, rel, str(meta.get("one-machine")), str(meta.get("one-machine-evidence") or ""))
+                if parties and str(meta.get("date", "")) >= _parties.ONE_MACHINE_TARGET_SINCE:
+                    hollow = _parties.one_machine_target_finding(str(meta.get("one-machine")),
+                                                                 str(meta.get("audience") or ""), parties)
+                    if hollow:
+                        f["audience"].append({"where": rel, "issue": hollow[0],
+                                              "reason": str(meta.get("one-machine")), "fix": hollow[1]})
             # 10. routing fields — no ratchet: they are optional, judged only where used
             field_findings(f, rel, meta, repo, areas, devices)
             # 11. relations — entries dated STATE_SINCE or later. Measured the day it was written:

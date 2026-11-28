@@ -469,7 +469,13 @@ def main() -> int:
                 if one:
                     return refuse(f"left out down to one machine ({one}), and this asks for a Windows check - a "
                                   "check only that machine can do: --one-machine <reason>")
-    stem = f"{a.kind}-{slug(a.title)}-{a.date}"
+    # The reason speaks about its own target (one reader with the lint's check 9b; the address as written, after
+    # any --except narrowing, is what the lint reads in `audience:`).
+    if a.kind == "request" and a.one_machine and a.date >= _parties.ONE_MACHINE_TARGET_SINCE:
+        hollow = _parties.one_machine_target_finding(a.one_machine, ", ".join(to), parties)
+        if hollow:
+            return refuse(f"{hollow[0]}: {hollow[1]}")
+    stem =f"{a.kind}-{slug(a.title)}-{a.date}"
     path = area_dir / f"{stem}.md"
     if path.exists():
         return refuse(f"{path.relative_to(a.repo).as_posix()} exists - change the title")
