@@ -59,6 +59,13 @@
  *       instance extends them with its language in `.claude/rules/watch-gate.json`
  *       (`hand_step_patterns`, `no_watcher_markers`). Quoted text and code are stripped
  *       before matching (talk ABOUT a request quotes it).
+ *   (e2) report-ask — the reply asks the human to REPORT a state ("tell me when X", "let me know once X"; an
+ *       instance adds its language as `report_ask_patterns` in `.claude/rules/watch-gate.json`) and the turn
+ *       made no read at all: no Bash/PowerShell call, no MCP call, no Monitor. A waiter alone passed (e), so
+ *       the operator was asked for a state the AI could have read itself — measured 2026-11-27 on the macOS
+ *       instance: "tell me when the board is on USB" while the board was already enumerated (the waiter armed
+ *       afterwards found it after 0 s). A report ask is a hand step too: with a read but no waiter, (e) holds.
+ *       The `⚙ no watcher:` line passes it (it declares that no probe is possible).
  *   (f) `gh issue create`, or `gh issue comment` / `gh pr comment` whose body asks something
  *       (a question mark or "please"), ran AND no PR-side watcher lives (same test as (b)):
  *       a ticket or a question in a thread expects an answer in that thread, and only the
@@ -72,6 +79,15 @@
  *       while a CI watch started anywhere in this SESSION has no GREEN/RED verdict read yet —
  *       see pendingCi() below. Not covered by a close stamp: the close names its open ends
  *       instead of declaring nothing open.
+ *
+ * CASE SELECTION (2026-11-27): `--only <names>` runs only the named cases, `--skip <names>` all but them
+ * (comma-separated; `--only=a,b` works too). Names: shared-memory (a) · pr-watch (b) · reload (c) ·
+ * ci-watch (d) · hand-step (e) · report-ask (e2) · thread-ask (f) · standing-watch (g) · done-claim (h).
+ * So one stop-checks.json row can block on some cases and a second row (another marker and label) record
+ * the rest. Measured 2026-11-27 on the macOS instance: the gate ran as a recorder because 140 of 148 hits
+ * that day were (g) during bench work; the 4 hand-step hits drowned in them and never blocked. Without a
+ * flag every case runs, as before. An unknown name is named in a systemMessage, never silently dropped.
+ *
  * Blocks once per turn; a re-issue (stop_hook_active) or a second stop in the same turn
  * passes — the agent may have a reason not to watch, and says it.
  * Frequency design: fires only on a hit, once per turn, no turn cooldown — the hit is an
@@ -126,6 +142,31 @@ const HAND_STEP_BUILTIN = [
   '\\bI\\s+need\\s+you\\s+to\\b',
 ];
 const NO_WATCHER_BUILTIN = ['⚙\\s*no\\s+watcher\\s*:'];
+// (e2) a state the human is asked to REPORT. Not "let me know if/whether" — that asks a preference. Not a decision or a
+// fact question either (review of #698, Windows instance 2026-11-28: "let me know when you are ready", "tell me once
+// you have decided", "can you tell me when the show is", "let me know as soon as possible which option" were blocked):
+// the subject after the conjunction is no "you are ready / you have decided", no "possible", no which/what/whether, and
+// a "(can|could) you tell me" is a question.
+const NOT_A_STATE = "(?!\\s+(?:you(?:'re|\\s+are)\\s+ready|you(?:'ve|\\s+have)\\s+(?:decided|chosen|picked)|possible|which|what|whether)\\b)";
+const REPORT_ASK_BUILTIN = [
+  `(?<!\\b(?:can|could)\\s+you\\s+)\\b(?:tell|let)\\s+me\\s+(?:know\\s+)?(?:when|once|as\\s+soon\\s+as)\\b${NOT_A_STATE}`,
+  `\\breport\\s+back\\s+(?:when|once|as\\s+soon\\s+as)\\b${NOT_A_STATE}`,
+];
+// The case names of --only / --skip (header, CASE SELECTION).
+const CASES = ['shared-memory', 'pr-watch', 'reload', 'ci-watch', 'hand-step', 'report-ask', 'thread-ask', 'standing-watch', 'done-claim'];
+function caseSelection(argv) {
+  const list = (flag) => {
+    const i = argv.findIndex((a) => a === flag || a.startsWith(`${flag}=`));
+    if (i < 0) return null;
+    const v = argv[i] === flag ? (argv[i + 1] || '') : argv[i].slice(flag.length + 1);
+    return v.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  };
+  const only = list('--only'); const skip = list('--skip');
+  const unknown = [...(only || []), ...(skip || [])].filter((n) => !CASES.includes(n));
+  // an --only without names would switch every case off in silence (review of #698, finding 3): said, and read as no flag
+  if (only && !only.length) return { want: (n) => !(skip && skip.includes(n)), unknown: ['(--only without case names)'] };
+  return { want: (n) => (!only || only.includes(n)) && !(skip && skip.includes(n)), unknown };
+}
 // (f) a ticket, or a comment that asks something.
 const ISSUE_CREATE = /\bgh\s+issue\s+create\b/;
 const COMMENT = /\bgh\s+(?:issue|pr)\s+comment\b/;
@@ -160,6 +201,7 @@ function loadPatterns(root) {
     return new RegExp(out.join('|'), 'iu');
   };
   return { handStep: merge(HAND_STEP_BUILTIN, cfg.hand_step_patterns), noWatcher: merge(NO_WATCHER_BUILTIN, cfg.no_watcher_markers),
+    reportAsk: merge(REPORT_ASK_BUILTIN, cfg.report_ask_patterns),
     reloadAsk: merge([RELOAD_ASK.source], cfg.reload_ask_patterns), doneClaim: doneClaimRegex(root) };
 }
 
@@ -722,13 +764,18 @@ function main(input) {
   OWN_ECHO = ownEcho(input, OWN_ECHO);
   if (input.stop_hook_active || !input.transcript_path) hookExit(0);
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  const { want, unknown } = caseSelection(process.argv.slice(2));
+  // An unknown case name is said, never dropped in silence (a typo in --only would switch the row off).
+  const note = unknown.length ? `watch-gate: unknown case name(s) ${unknown.join(', ')} in --only/--skip `
+    + `(known: ${CASES.join(', ')})` : '';
+  const pass = () => { if (note) process.stdout.write(JSON.stringify({ systemMessage: note })); hookExit(0); };
   const { calls, since, fired, lastText } = turn(input.transcript_path);
-  if (fired) hookExit(0);
+  if (fired) pass();
   const shell = calls.filter((c) => c.name === 'Bash' || c.name === 'PowerShell');
   // Each finding: its text, and whether a close entry's open-end lines cover it (null = never).
   const missing = [];
 
-  for (const { label, repo } of smChannels(root)) {
+  if (want('shared-memory')) for (const { label, repo } of smChannels(root)) {
     const repoName = path.basename(repo);
     const smPush = shell.some((c) => isGitPush(c.cmd) && c.cmd.includes(repoName));
     if (!smPush || !fs.existsSync(repo)) continue;
@@ -745,29 +792,38 @@ function main(input) {
     }
   }
   const prCreates = shell.filter((c) => /\bgh\s+pr\s+create\b/.test(c.cmd));
-  if (prCreates.length && !prWatched(root, calls)) {
+  if (want('pr-watch') && prCreates.length && !prWatched(root, calls)) {
     missing.push({ text: 'PR created — arm Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr> (or collab-watch)',
       covered: ghListed(prCreates, root) });
   }
   const pats = loadPatterns(root);
   // (c) the reply ends by asking the human for a reload, and nothing waits for it to arrive. Raw text,
   // not quote-stripped: the ask itself is usually written as code (`/mcp`).
-  if (pats.reloadAsk.test(lastText) && !calls.some((c) => RELOAD_WATCH.test(c.cmd))) {
+  if (want('reload') && pats.reloadAsk.test(lastText) && !calls.some((c) => RELOAD_WATCH.test(c.cmd))) {
     missing.push({ text: 'reload requested from the human — arm core/scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s] '
       + '(Monitor or run_in_background) BEFORE asking, then say which reload you need', covered: null });
   }
   // (d) a push started a CI run and nothing in this turn watches it
-  for (const slug of ciStarted(shell, root)) {
+  if (want('ci-watch')) for (const slug of ciStarted(shell, root)) {
     if (ciWatched(calls, slug)) continue;
     missing.push({ text: `CI started on ${slug} (push, PR or merge) and nothing watches the run — arm `
       + `bash core/scripts/ci-watch.sh pr ${slug} <nr> (or ref ${slug} <branch>) via Monitor or run_in_background, in this turn`,
     covered: (ends) => listed(ends, [nameOf(slug)]) });
   }
   // (e) the reply asks the human for a hand step, and nothing in this turn waits for its effect
+  // (e2) a report ask is a hand step too; asked without any read in the turn, it is the stronger finding.
   const waiter = calls.some((c) => c.name === 'Monitor' || c.name === 'ScheduleWakeup' || c.bg);
-  if (!waiter && !pats.noWatcher.test(lastText)) {
-    const m = pats.handStep.exec(stripQuoted(lastText));
-    if (m) {
+  if ((want('hand-step') || want('report-ask')) && !pats.noWatcher.test(lastText)) {
+    const said = stripQuoted(lastText);
+    const r = pats.reportAsk.exec(said);
+    // the harness's own read tools count too (review of #698: a Read of a log plus a wakeup was called "never measured")
+    const read = shell.length > 0 || calls.some((c) => /^(?:Monitor|Read|Grep|Glob|WebFetch|WebSearch)$/.test(c.name) || /^mcp__/.test(c.name));
+    const m = r || pats.handStep.exec(said);
+    if (r && !read && want('report-ask')) {
+      missing.push({ text: `a state is asked of the human ("${r[0].trim()}") that this turn never measured — read it first `
+        + '(a device list, a port, a log) or arm a waiter that reads it; where no probe is possible, write "⚙ no watcher: <why>"',
+      covered: null });
+    } else if (m && !waiter && want('hand-step')) {
       missing.push({ text: `a hand step is asked of the human ("${m[0].trim()}") and no waiter runs — build the measurement `
         + 'and arm it (Monitor / run_in_background) BEFORE the request, say what will not move; '
         + 'where no probe is possible, write "⚙ no watcher: <why>"', covered: null });
@@ -775,12 +831,12 @@ function main(input) {
   }
   // (f) a ticket or a question posted in a thread, and no standing repo watch reads the answer
   const asks = shell.filter((c) => ISSUE_CREATE.test(c.cmd) || (COMMENT.test(c.cmd) && /[?]|\bplease\b/i.test(ghBody(c.cmd))));
-  if (asks.length && !prWatched(root, calls)) {
+  if (want('thread-ask') && asks.length && !prWatched(root, calls)) {
     missing.push({ text: 'an issue or a question was posted on GitHub and no repo watch lives — arm collab-watch '
       + '(or Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr>)', covered: ghListed(asks, root) });
   }
   // (g) the brain can watch, and no standing watch lives (never armed, or the Monitor expired)
-  const standing = standingConfig(root);
+  const standing = want('standing-watch') ? standingConfig(root) : null;
   if (standing) {
     const off = /^off\b/i.test(standing.setting);
     if (off && !standing.setting.replace(/^off\s*:?\s*/i, '')) {
@@ -794,7 +850,7 @@ function main(input) {
     }
   }
   // (h) the reply declares the work finished while a CI verdict of this session is still unread
-  if (pats.doneClaim.test(stripQuoted(lastText))) {
+  if (want('done-claim') && pats.doneClaim.test(stripQuoted(lastText))) {
     const pending = pendingCi(input.transcript_path);
     if (pending.length) {
       missing.push({ text: `the reply says the work is finished, but ${pending.length} CI watch(es) of this session have `
@@ -802,7 +858,7 @@ function main(input) {
         + 'say it is open and what is awaited, or read the verdict first', covered: null });
     }
   }
-  if (!missing.length) hookExit(0);
+  if (!missing.length) pass();
   // A measured BLOCKED end with a declared watcher gap (Windows coherence scan 2026-11-16, agreed by the
   // operator the same day): a machine that cannot keep a watcher alive (no collaborators, a show machine
   // offline, a channel it may not poll) ended every such turn here, although the gap is written down. The
@@ -813,18 +869,19 @@ function main(input) {
   let gapped = missing;
   const gap = watchGap(root, lastText);
   if (gap) gapped = missing.filter((m) => !m.covered);
-  if (!gapped.length) hookExit(0);
+  if (!gapped.length) pass();
   // The close turn: a close stamp of this session and turn passes what its entry lists (header).
   let left = gapped;
   const ends = gapped.some((m) => m.covered) ? closeOpenEnds(root, { sessionId: input.session_id, since, calls }) : null;
   if (ends) left = gapped.filter((m) => !(m.covered && m.covered(ends)));
-  if (!left.length) hookExit(0);
+  if (!left.length) pass();
   process.stdout.write(JSON.stringify(declare({
     decision: 'block',
     reason: `WATCH-GATE: a watcher is missing. ${left.map((m) => m.text).join(' · ')}. `
       + (ends ? 'The close stamp passes only what its session-log entry lists as "open end: <repo> #<n> - what is awaited" '
         + '(a shared-memory request by its file name). ' : '')
       + 'If nothing is awaited, say why in one line and stop again.',
+    ...(note ? { systemMessage: note } : {}),
   }, input)));
   hookExit(0);
 }
