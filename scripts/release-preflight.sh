@@ -230,6 +230,29 @@ if [ "$MODE" = "local" ] || [ "$MODE" = strand ]; then
     # named, never counted. gh unreadable = every entry counts, as before.
     OPEN_NRS="?"
     command -v gh >/dev/null 2>&1 && OPEN_NRS="$(cd "$ROOT" && gh pr list --state open --limit 200 --json number,isDraft --jq '[.[].number] | join(" ")' 2>/dev/null || echo "?")"
+    # A PR the release scope EXCLUDES for this version (release-scope.py exclude, the operator's word) is not awaited:
+    # measured 2026-11-25 at v2.1.7, an entry that named the excluded #653 and #662 and itself said "not for 2.1.7"
+    # held the tag. The scope file is the brain's (RELEASE_SCOPE_BRAIN), its version must be this one.
+    SCOPE_JSON="${RELEASE_SCOPE_BRAIN:-}/.claude-state/release-scope.json"
+    if [ "$OPEN_NRS" != "?" ] && [ -n "${RELEASE_SCOPE_BRAIN:-}" ] && [ -f "$SCOPE_JSON" ]; then
+      command -v cygpath >/dev/null 2>&1 && SCOPE_JSON="$(cygpath -m "$SCOPE_JSON")"   # OS-3: python reads it as data
+      # prints "<open numbers left>|<excluded numbers>"
+      SPLIT="$("$PY" -c 'import json,re,sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+ex = []
+if str(d.get("version", "")).lstrip("v") == sys.argv[2].lstrip("v"):
+    # a bare number, "#n", or "<this repo>#n"; ledger ids and numbers of other repos are no PR of this repo (Windows
+    # review of #696: the first regex let the prefix eat digits, "653" read as 3)
+    for k in d.get("excluded") or {}:
+        m = re.fullmatch(r"(?:(\S*?)#)?(\d+)", str(k).strip())
+        if m and (not m.group(1) or m.group(1).rsplit("/", 1)[-1] == sys.argv[4]):
+            ex.append(m.group(2))
+print(" ".join(n for n in sys.argv[3].split() if n not in ex) + "|" + " ".join(ex))' "$SCOPE_JSON" "$VER" "$OPEN_NRS" "$base" 2>/dev/null)"
+      if [ -n "$SPLIT" ]; then
+        OPEN_NRS="${SPLIT%%|*}"; EXCL_NRS="${SPLIT#*|}"
+        [ -n "$EXCL_NRS" ] && note "PRs excluded from the $VER scope do not count as awaited: #${EXCL_NRS// / #}"
+      fi
+    fi
     awaited=""; other=""
     while IFS= read -r f; do
       [ -n "$f" ] || continue

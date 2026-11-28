@@ -33,6 +33,7 @@ const path = require('path');
 
 const LEVELS = ['symptom', 'reader', 'writer', 'design'];
 const MARK = /<!--\s*fragment:\s*([\w.-]+)\s*-->/;
+const SYMPTOM = /^\s*(?:[-*]\s+)?symptom:\s*(.+?)\s*$/gm;   // the line form scripts/real-data-replay.py reads
 
 // Every `(level: …)` group of a text, parentheses balanced (the reasons may carry their own).
 // Inline code is blanked first: a fragment that QUOTES the form (`(level: …)`) is not a field.
@@ -155,7 +156,25 @@ function check(root, only) {
   const findings = [];
   for (const p of files) {
     const name = path.relative(root, p).replace(/\\/g, '/');
-    const gs = groups(read(p));
+    const raw = read(p);
+    // A `symptom:` line runs WITHOUT a shell (scripts/real-data-replay.py: shlex.split): measured 2026-11-25 in the
+    // v2.1.7 preflight, a line with `|` ended rc 2 ("unrecognized arguments: | grep") - the bug was not measured at
+    // all. Shell syntax goes inside `sh -c '...'`, the form CHANGELOG 2.1.x already uses - the WHOLE line, nothing after
+    // the quoted script (Windows review of #696: `sh -c 'x' | wc -l` hands the pipe to sh as $0/$1, ignored; `bash -c`
+    // starts WSL's bash on Windows, OS-14, so it is no accepted form). Limit named in the fragment: on Windows the
+    // `sh -c` form itself does not measure yet (python3 is the Store stub inside sh, `{core}` with a backslash path).
+    const SH_FORM = /^sh\s+-c\s+(?:'[^']*'|"(?:[^"\\]|\\.)*")$/;
+    // Shell syntax = operators, variables, `~`, the globs `*` `?` `[`, a word-leading `!` (negation; without a shell
+    // it becomes argv[0]) and brace expansion with a comma (`a{1,2}`; the `{core}` placeholders carry no comma).
+    // Windows re-review of #696, 2026-11-27: `!`, `?`, `[` and `a{1,2}` passed although shlex cannot run them.
+    const SHELL_SYNTAX = /[|&;<>$~*?[`]|(?:^|\s)!|\{[^}\s]*,[^}]*\}/;
+    for (const m of raw.matchAll(SYMPTOM)) {
+      const c = m[1].trim();
+      if (SHELL_SYNTAX.test(c) && !SH_FORM.test(c)) {
+        findings.push(`${name}: symptom: "${c.slice(0, 80)}" uses shell syntax but runs without a shell - write the whole line as sh -c '...'`);
+      }
+    }
+    const gs = groups(raw);
     if (!gs.length) {
       findings.push(`${name}: no (level: …; higher: …; debt: …) field - every change declares its level`);
       continue;
