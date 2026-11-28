@@ -222,6 +222,16 @@
         ]
       },
       {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/agent-model-gate.cjs\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|Workflow|mcp__.*",
         "hooks": [
           {

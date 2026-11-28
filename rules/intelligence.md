@@ -204,7 +204,9 @@ History: core/docs/rule-history.md, "Presenting to the Operator".
 
 **Before EVERY agent spawn (Agent tool or workflow stage), evaluate the model class: does THIS task
 need the session model, or is the small one enough?** (operator decision 2026-08-13 — inheriting
-counts as a choice.) Read/search/collect/copy → small model; judge/verify/synthesize/write → session
+counts as a choice.) The choice is written into the spawn (2026-11-23): one prompt line
+`Model: <class|inherit> — <why this class for this task>`, the same class the call sets; carrier
+`core/helpers/agent-model-gate.cjs`, record `.claude-state/agent-spawns.jsonl`. Read/search/collect/copy → small model; judge/verify/synthesize/write → session
 model, hard verify stages → higher effort; audit workflows per stage via `args.models`. No model
 version names in docs. Multi-agent costs ~15x chat tokens — only for broad independent work, as
 separate phase workflows; resumable scripts and salvage after a limit-kill: `core/docs/multi-agent-relay.md`.

@@ -23,12 +23,21 @@
     "\"autonomous\" - set it only on the operator's standing word that every session runs autonomously until they ask",
     "what is open; the words above still switch it.",
     "continue_patterns (optional, read by autonomous-idle-gate): a bare continuation prompt in the operator's language",
-    "(\"please continue\" is built in) that does not end a release the way a new topic does, e.g. \"^\\\\s*mach weiter\\\\b\"."
+    "(\"please continue\" is built in) that does not end a release the way a new topic does, e.g. \"^\\\\s*mach weiter\\\\b\".",
+    "close_patterns: the operator's words that CLOSE the session (\"close the session\", \"we're done for today\" are built",
+    "in). A close word is no mode switch: it ends the autonomous mode at once, without the mode-confirm question",
+    "(operator 2026-11-25) - so a close word belongs here, not in off_patterns (an off-word opens 'continue",
+    "interactively?'). Example: \"\\\\b(beende die session|session abschliessen|mach schluss)\\\\b\".",
+    "mode_confirm (optional, default false): true = a mode word never switches by itself, only the answer to a",
+    "question-tool question with header 'mode-confirm' does (core/docs/run-modes.md, 'Switching'); false or missing =",
+    "the direct switch, a mode word switches at once. Close words and the ask window hold in both settings."
   ],
+  "mode_confirm": false,
   "initial_mode": "interactive",
   "on_patterns": [],
   "off_patterns": [],
   "yes_patterns": [],
+  "close_patterns": [],
   "_cases": [
     {"steps": ["work through the list autonomously"], "expect": "autonomous"},
     {"steps": ["work through the list autonomously", "anything open for me?",
