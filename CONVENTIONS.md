@@ -455,8 +455,10 @@ conflict a human must resolve by hand — reached structurally, not through care
 `ecosystem.json`. **The session start runs it by itself** when a channel is behind the pin
 (operator decision 2026-11-25: the plugin moved on while `core/` stayed, a Windows brain ran
 the hooks of 2.1.5 over the helpers of 2.0.4), in the background; the next start reports how
-it ended. It holds — and asks instead — on a declared core alpha, a checkout ahead of the pin,
-local changes in `core/`, a `core/` HEAD that is no released tag or sits on a branch, a failed
+it ended. It runs only at a real start (SessionStart source `startup`), never on a compaction,
+a resume or a clear. It holds — and asks instead — on a declared core alpha, a checkout ahead of the pin,
+local changes in `core/`, a `core/` HEAD that is no released tag or sits on a branch (a `core/`
+without any tags says so: one hand run fetches them), a failed
 automatic run less than six hours ago, the machine profile's `- Session pull: off` or
 `- Core update: off` (per machine: the show machine's switch), or `.claude/rules/core-update.json`
 (brain-wide): `{"hold_until": "YYYY-MM-DD", "reason": "show day"}`, `{"auto": false, "reason": "…"}`.

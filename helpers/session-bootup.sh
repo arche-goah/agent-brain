@@ -259,13 +259,22 @@ if [[ -s "$BU_RC" ]]; then
 fi
 if [[ -n "$upd" ]]; then
   bu_hold=""
-  [[ -n "$core_alpha" ]] && bu_hold="a declared core alpha runs (brain-update.sh would end it)"
+  # Round-two review (2026-11-27): SessionStart has no matcher, so this block also runs on a
+  # compaction, a resume or a clear - a pin that moved meanwhile would be pulled into core/ and
+  # committed under a running session. Only a real start (source "startup", or no payload) runs it.
+  bu_source=""
+  [[ "${HOOK_INPUT:-}" =~ \"source\"[[:space:]]*:[[:space:]]*\"([A-Za-z_-]*)\" ]] && bu_source="${BASH_REMATCH[1]}"
+  [[ -n "$bu_source" && "$bu_source" != startup ]] && bu_hold="this is a $bu_source of a running session, not a start (the update runs only at a real start)"
+  [[ -z "$bu_hold" && -n "$core_alpha" ]] && bu_hold="a declared core alpha runs (brain-update.sh would end it)"
   [[ -z "$bu_hold" && -n "$ahead_note" ]] && bu_hold="the core checkout is ahead of the pin (a PR under test)"
   [[ -z "$bu_hold" && -n "$(git -C core status --porcelain 2>/dev/null | head -n 1)" ]] && bu_hold="core/ has local changes"
   if [[ -z "$bu_hold" ]]; then
     bu_branch=$(git -C core symbolic-ref -q --short HEAD 2>/dev/null)
     if [[ -n "$bu_branch" ]]; then
       bu_hold="core/ is on branch $bu_branch (work in progress there)"
+    elif [[ -z "$(git -C core tag -l 2>/dev/null | head -n 1)" ]]; then
+      # A shallow or tagless submodule clone: the hold would never lift by itself (review 2026-11-27).
+      bu_hold="core/ carries no tags (a shallow or tagless clone) - run bash core/scripts/brain-update.sh by hand once, it fetches them"
     elif ! git -C core describe --exact-match --tags HEAD >/dev/null 2>&1; then
       bu_hold="core/ HEAD is no released tag (local commits or a hand checkout)"
     fi

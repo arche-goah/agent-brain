@@ -100,6 +100,15 @@ n=$(cat "$T/p.1" "$T/p.2" | grep -ac "started automatically")
 wait_rc "$T/p"
 fresh o; held "BRAIN_UPDATE_AUTO_OFF holds it" o "BRAIN_UPDATE_AUTO_OFF*" BRAIN_UPDATE_AUTO_OFF=1
 
+# Round-two review (2026-11-27): the block ran on every SessionStart source, and a tagless core/
+# held with no way out named.
+fresh s1; held "a compaction holds it" s1 "this is a compact of a running session*" HOOK_INPUT='{"session_id":"x","source":"compact"}'
+fresh s2; held "a resume holds it" s2 "this is a resume of a running session*" HOOK_INPUT='{"source": "resume"}'
+fresh s3; held "a clear holds it" s3 "this is a clear of a running session*" HOOK_INPUT='{"source":"clear"}'
+fresh s4
+out=$(run s4 upd="x -> y" HOOK_INPUT='{"session_id":"x","source":"startup"}'); check "a real start (source startup) runs it (control)" "$out" "core update started automatically:*"; wait_rc "$T/s4"
+fresh t1; g -C "$T/t1/core" tag -d v1.0.0; held "a tagless core/ holds it and names the way out" t1 "core/ carries no tags*brain-update.sh by hand once*"
+
 fresh k
 out=$(run k)
 check "nothing behind: nothing started (control)" "$out" ""
