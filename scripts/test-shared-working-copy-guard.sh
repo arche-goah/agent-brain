@@ -55,10 +55,10 @@ PRIVW_N=$(native "$PRIVW"); LOOK_N=$(native "$LOOK")
 
 # $1 name, $2 sessions fixture ("cwd1;cwd2" or ""), $3 command, $4 block|allow, [$5 session id]
 probe() {
-  local out rc sid="${5:-sess-A}"
+  local out rc sid="${5:-sess-A}" cwd="${6:-$REPO_N}"   # $6: the shell's cwd (default: the main checkout)
   # JSON built by node from argv (a printf-built input broke on a bare double quote, 2026-11-02); the probes keep
   # writing \" and \n as JSON escapes, unesc() turns them into the characters.
-  out=$(node -e 'const a=process.argv;const unesc=(s)=>s.replace(/\\(["\\\/nt])/g,(m,c)=>c==="n"?"\n":c==="t"?"\t":c);process.stdout.write(JSON.stringify({tool_name:"Bash",session_id:a[1],cwd:a[2],tool_input:{command:unesc(a[3])}}))' "$sid" "$REPO_N" "$3" \
+  out=$(node -e 'const a=process.argv;const unesc=(s)=>s.replace(/\\(["\\\/nt])/g,(m,c)=>c==="n"?"\n":c==="t"?"\t":c);process.stdout.write(JSON.stringify({tool_name:"Bash",session_id:a[1],cwd:a[2],tool_input:{command:unesc(a[3])}}))' "$sid" "$cwd" "$3" \
         | SHARED_COPY_FIXTURE_SESSIONS="$2" CLAUDE_PROJECT_DIR="$TMP_N" node "$HELPER" 2>&1)
   rc=$?
   if printf '%s' "$out" | grep -q '"permissionDecision": *"deny"'; then
@@ -191,6 +191,10 @@ if [ -n "$BUSY_SH" ]; then
     probe "checkout -f under the run"                   "$ONE" "git -C $PRIV_N checkout -f"                    block
     probe "switch -c n --discard-changes under the run" "$ONE" "git -C $PRIV_N switch -c side --discard-changes" block
     probe "worktree remove of the marked worktree from the main checkout" "$ONE" "git -C $REPO_N worktree remove --force $PRIV_N" block
+    # Windows review of #692, round one (reader gap, taken into the train 2026-11-28): the shell cd-ed into the marked
+    # checkout in an earlier command, the call has no -C; the project dir is elsewhere
+    probe "a bare switch where the shell stands in the marked checkout" "$ONE" "git switch fixture-lookalike" block sess-A "$PRIV_N"
+    probe "a bare status there still passes"             "$ONE" "git status --short" allow sess-A "$PRIV_N"
     probe "worktree remove of an unmarked worktree"     "$ONE" "git -C $REPO_N worktree remove --force $(native "$PRIVW")-absent" allow
     probe "commit by path under the run"                "$ONE" "git -C $PRIV_N commit a.txt -m x"              allow
     probe "marker opens it"                             "$ONE" "git -C $PRIV_N switch fixture-lookalike  # MECHANISM-OK: fixture" allow

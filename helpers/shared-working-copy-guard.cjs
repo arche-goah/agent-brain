@@ -290,10 +290,14 @@ process.stdin.on('end', () => {
   const cmd = (data.tool_input && data.tool_input.command) || '';
   if (!/\bgit\b/.test(cmd)) process.exit(0);
   const project = process.env.CLAUDE_PROJECT_DIR || data.cwd || '.';
+  // A call without -C runs where the SHELL stands (the hook's cwd), not in the project dir: a session that cd-ed
+  // into a clone in an earlier command runs a bare `git switch` there (Windows review of #692: such a call passed in
+  // a marked checkout). The project dir stays the place of the log.
+  const shellCwd = data.cwd || project;
   const sid = String(data.session_id || '');
   const marker = /MECHANISM-OK:/.test(cmd);
   let calls;
-  try { calls = gitCalls(cmd, project); } catch (_) { process.exit(0); }
+  try { calls = gitCalls(cmd, shellCwd); } catch (_) { process.exit(0); }
   if (!calls.length) process.exit(0);
 
   // Sessions on this machine, this one included — counted once, only when a call needs it.

@@ -99,6 +99,13 @@ Wording before the context diet of 2026-10-20, verbatim. The rule file now carri
     finished in the same turn, so the other session never meets a half-done state.
 ```
 
+#13, busy mark (2026-11-23, rule clause 2026-11-28): measured on the macOS instance, a detached
+`core-push-lint.sh` ran in a core clone and the agent switched that clone to another branch
+meanwhile; the lint stamped the SHA, not the tree it read. A first form matched the process list
+against the path and never fired on Windows (no `ps` for node, four spellings of one path). The
+mark file in the checkout's git dir needs neither. The clause under #13 was added after a Windows
+content review noted that no rule named the hold.
+
 ### File Rules
 
 `bootstrap-brain.sh` writes `.gitattributes`
