@@ -101,6 +101,19 @@ run_case de-no-pack '"Bericht fertig. Soll ich das jetzt umsetzen?"' allow "$CWD
 # English engine built-ins
 run_case en-proceed '"The fix is ready. Should I proceed with the merge?"' block "$CWD"
 run_case en-want-me '"Tests are green. Do you want me to tag the release?"' block "$CWD"
+# The question shape: auxiliary + you + ?, without a first-person handback phrase
+run_case en-you-shape '"Tests are green. Would you like the gate as a core PR for every brain?"' block "$CWD"
+run_case en-you-bold '"**To agree:** Do you want the gate in the core?"' block "$CWD"
+run_case en-you-wh '"Both fixes are ready. Which one do you want merged first?"' block "$CWD"
+run_case en-you-inline '"The rule forbids endings like do you want X? at the turn end, fixed."' allow "$CWD"
+# Windows content review 2026-11-26: a question after a line break or after another question was missed
+run_case en-you-newline '"Tests are green\n\nWould you like the gate as a core PR?"' block "$CWD"
+run_case en-you-after-question '"Ready? Do you want the merge now?"' block "$CWD"
+# Windows re-review 2026-11-27: a question after a dash or a closing parenthesis, and "were you", were missed
+run_case en-you-after-dash '"All green - do you want the merge now?"' block "$CWD"
+run_case en-you-after-paren '"All green (both OS) Do you want the merge now?"' block "$CWD"
+run_case en-you-were '"Done. Were you expecting the old head?"' block "$CWD"
+run_case en-you-hyphen-word '"The well-known fix is in, nothing open."' allow "$CWD"
 # English built-ins still grip with a language file present (merge, not replace)
 run_case en-with-pack '"Tests are green. Do you want me to tag the release?"' block "$DE"
 # Negative direction
@@ -262,8 +275,10 @@ $ECHO_OTHER" true
 # verification/watcher block carried a new "I will build it next" and the autonomous run stood still)
 run_gate announce-after-other-gate '"Verdicts read, all green. Next, I will build the watch-pr lock."' block "$CWD" "$PRIOR
 $ECHO_OTHER" true "an announcement is not an action"
-# unchanged: a clarification that is no permission handback is not judged
-run_gate clarification-question '"Two log files match. Which of them did you mean, the old or the new one?"' allow "$CWD" "" false
+# a clarification question to the operator goes through the question tool too (operator 2026-11-26 on the
+# macOS instance: "questions to me cleanly through the question tool, otherwise something gets lost again";
+# supersedes the earlier exemption of clarifications from this gate)
+run_gate clarification-question '"Two log files match. Which of them did you mean, the old or the new one?"' block "$CWD" "" false
 # unchanged: the German pack grips the same way through the instance file
 run_gate de-ask-reissue-blocks '"Bericht fertig. Soll ich das jetzt umsetzen?"' block "$DE" '{"message":{"role":"assistant","content":[{"type":"text","text":"Bericht fertig. Soll ich das jetzt umsetzen?"}]}}
 '"$ECHO_OWN" true "question tool"

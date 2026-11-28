@@ -88,6 +88,7 @@ const AUTONOMOUS_LINE = /^[ \t>*_`-]*⚙️?\s*autonomous:/imu;
 const { autonomousMode } = require('./autonomous-mode.cjs');
 const { closeOpenEnds } = require('./close-stamp.cjs');
 const MAX_TOOL_BLOCKS = 2; // blocks per turn before a prose decision question is let through
+const { YOU_QUESTION } = require('./question-shape.cjs');
 
 // Permission-handback questions. Deliberately NOT matched: bare "GO?" (release
 // gate), option questions without a first-person handback ("which channel?"). A turn
@@ -100,6 +101,10 @@ const BUILTIN_PATTERNS = [
   '\\bdo you want me to\\b[^?\\n]{0,140}\\?',
   '\\bwant me to (proceed|continue|go ahead)\\b[^?\\n]{0,80}\\?',
   '\\bshould i (proceed|continue|go ahead|start)\\b[^?\\n]{0,80}\\?',
+  // The question SHAPE, not a phrase: a sentence that opens with an auxiliary and "you" and
+  // ends in "?" ("Would you like the core PR now?", "Which one do you want?"). One source
+  // with question-gate.cjs: helpers/question-shape.cjs (measurement and reasons there).
+  ...YOU_QUESTION,
 
   // Shape 2: the HANDOFF, which asks nothing and stops just as hard. Measured on a
   // live instance 2026-08-31 — four deferrals in one day, none of them a question,
