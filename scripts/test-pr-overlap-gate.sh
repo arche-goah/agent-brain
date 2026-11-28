@@ -52,6 +52,8 @@ W="git -C /x/grandma3-suite worktree add -b chore/english-sweep-reference /tmp/w
 check "the incident: a worktree branch in a repo with open PRs" "$W" block "$SF"
 out=$(printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(js "$W")" | PR_OVERLAP_FIXTURE="$SF" node "$G")
 case "$out" in *"#232"*"already uses the branch name"*) ok "the block lists the PRs and the same branch name";; *) bad "list or name missing: ${out:0:300}";; esac
+# 2026-11-23: #645 fixed what the open #618 had fixed - a title does not say which lines change, the diff search does
+case "$out" in *"pr-diff-search.py"*"-R arche-goah/grandma3-suite"*) ok "the block names the diff search for that repo";; *) bad "diff search not named: ${out:0:400}";; esac
 check "checkout -b is a branch start too" "git checkout -b feat/x" block "$SF"
 check "switch -c is a branch start too" "git -C /x/r switch -c feat/x" block "$SF"
 # one reader with release-freeze-gate (branch-start.cjs, 2026-11-17): forms the old regex missed
