@@ -95,13 +95,35 @@ res() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool
 promise="$(txt 'From now on I never open a window on the operator machine.')"
 asst() { printf '{"type":"assistant","message":{"role":"assistant","content":%s}}\n' "$1"; }
 turn "$tmp/r.jsonl" "x" "$promise" "$(ask q1 AskUserQuestion)"; res q1 false >> "$tmp/r.jsonl"; asst "$(txt 'Done.')" >> "$tmp/r.jsonl"
-expect "a promise before a question-tool answer belongs to the previous turn" pass "$(run "$tmp/r.jsonl")"
+# A question does not end the turn: no Stop runs between a question and its answer (Windows review 2026-11-26, 590 answered
+# questions, 0 stops in between, probe P1), so the promise before it is judged at this turn's stop - it was judged by none.
+expect "a promise before a question-tool answer is judged at the turn's own stop" block "$(run "$tmp/r.jsonl")"
 turn "$tmp/s.jsonl" "x" "$promise" "$(ask b1 Bash)"; res b1 false >> "$tmp/s.jsonl"; asst "$(txt 'Done.')" >> "$tmp/s.jsonl"
 expect "another tool's result that reads like an answer is no boundary" block "$(run "$tmp/s.jsonl")"
 turn "$tmp/t.jsonl" "x" "$promise" "$(ask q2 AskUserQuestion)"; res q2 true >> "$tmp/t.jsonl"; asst "$(txt 'Done.')" >> "$tmp/t.jsonl"
 expect "a refused question (error result) is no boundary" block "$(run "$tmp/t.jsonl")"
 turn "$tmp/u.jsonl" "x" "$(ask q3 AskUserQuestion)"; res q3 false >> "$tmp/u.jsonl"; asst "$promise" >> "$tmp/u.jsonl"
 expect "a promise AFTER a question-tool answer still blocks" block "$(run "$tmp/u.jsonl")"
+# 2026-11-25 (macOS instance, held twice): the mechanism was written in the turn BEFORE a question; the promise came
+# after the answer. The answer arrives inside the turn: it bounds which promises are new, not what the turn built.
+gatew="$(wr "$tmp/core/helpers/no-window-gate.cjs" '// refuse any command that would open a window on the operator machine')"
+turn "$tmp/v.jsonl" "stop measuring" "$gatew" "$(ask q4 AskUserQuestion)"; res q4 false >> "$tmp/v.jsonl"; asst "$promise" >> "$tmp/v.jsonl"
+expect "a mechanism written before the question carries the promise after the answer" pass "$(run "$tmp/v.jsonl")"
+tend() { printf '{"type":"system","subtype":"turn_duration","durationMs":1}\n'; }
+turn "$tmp/w.jsonl" "stop measuring" "$gatew"; tend >> "$tmp/w.jsonl"
+printf '{"type":"user","message":{"role":"user","content":"<task-notification>done</task-notification>"}}\n' >> "$tmp/w.jsonl"; asst "$promise" >> "$tmp/w.jsonl"
+expect "control: a mechanism of an ENDED turn carries nothing in the next one" block "$(run "$tmp/w.jsonl")"
+turn "$tmp/x.jsonl" "x" "$promise"; tend >> "$tmp/x.jsonl"
+printf '{"type":"user","message":{"role":"user","content":"<task-notification>done</task-notification>"}}\n' >> "$tmp/x.jsonl"; asst "$(txt 'Done.')" >> "$tmp/x.jsonl"
+expect "a promise of an ended turn is not judged again in a turn a notification opened" pass "$(run "$tmp/x.jsonl")"
+# Windows review 2026-11-26, probe P6: no prompt and no turn end in the tail - the window falls back to the newest operator
+# word like every other gate, so a mechanism before the answer does not carry a promise after it (the tail may cut a turn)
+{ asst "$gatew"; asst "$(ask q5 AskUserQuestion)"; } > "$tmp/y.jsonl"; res q5 false >> "$tmp/y.jsonl"; asst "$promise" >> "$tmp/y.jsonl"
+expect "no turn start in the tail: the window falls back to the newest operator word" block "$(run "$tmp/y.jsonl")"
+# Probe P7, the harness contract (turn-kind.cjs isTurnEnd): the turn end is written AFTER the Stop hooks. A transcript whose
+# last record is one is an ended turn - nothing in it is judged. Fixed here so a change of that contract shows.
+turn "$tmp/z.jsonl" "x" "$promise"; tend >> "$tmp/z.jsonl"
+expect "contract: a turn end as the last record means the turn is over (the gate passes)" pass "$(run "$tmp/z.jsonl")"
 
 # 2026-11-06 (macOS instance, held three times): the sentence names the mechanism file written this turn, but prose and
 # code share no word (another language) - the file name carries it; a write to another mechanism file does not.

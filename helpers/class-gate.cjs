@@ -50,7 +50,7 @@ const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it
 const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
-const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers, isTurnEnd, turnWindows } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 
 let data = '';
@@ -121,9 +121,10 @@ function analyze(transcriptPath) {
     if (!line.trim()) continue;
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
+    if (isTurnEnd(d)) { events.push({ turnEnd: true }); continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
-    if (questionAnswered(d)) { events.push({ boundary: true }); continue; }
+    if (questionAnswered(d)) { events.push({ boundary: true, byAnswer: true }); continue; }
     if (msg.role === 'user' && typeof msg.content === 'string') {
       // Own feedback does not end the turn window, but marks the last block.
       if (HOOK_ECHO.test(msg.content)) {
@@ -143,10 +144,10 @@ function analyze(transcriptPath) {
       }
     }
   }
-  let last = events.length;
-  for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].boundary) { last = i; break; }
-  }
+  // the turn's edits count from the start of the turn - a question-tool answer arrives inside it (turnWindows);
+  // no boundary at all = nothing, as before
+  const win = turnWindows(events);
+  const last = win.start < 0 ? (win.words < 0 ? events.length : win.words) : win.start;
   const files = [];
   let answered = false;   // a ⚙ line after the turn's last edit (an edit after it reopens the question)
   for (let i = last; i < events.length; i++) {

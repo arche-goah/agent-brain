@@ -30,7 +30,7 @@
 const fs = require('fs');
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
-const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers, isTurnEnd, turnWindows } = require('./turn-kind.cjs');
 const { declare } = require('./stop-echo.cjs');
 
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -77,9 +77,10 @@ function turnEvents(transcriptPath) {
     if (!line.trim()) continue;
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
+    if (isTurnEnd(d)) { events.push({ turnEnd: true }); continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
-    if (questionAnswered(d)) { events.push({ boundary: true }); continue; }
+    if (questionAnswered(d)) { events.push({ boundary: true, byAnswer: true }); continue; }
     if (msg.role === 'user' && typeof msg.content === 'string') {
       if (HOOK_ECHO.test(msg.content)) continue;
       if (!isNotification(msg.content) && !isAgentOrigin(d)) events.push({ boundary: true });
@@ -101,9 +102,11 @@ function turnEvents(transcriptPath) {
       events.push({ kind: 'write', file, text, added });
     }
   }
-  let last = -1;
-  for (let i = events.length - 1; i >= 0; i--) if (events[i].boundary) { last = i; break; }
-  return events.slice(last + 1);
+  // promises and the writes that carry them both from the start of the turn (turnWindows); no turn start in the
+  // tail = from the newest operator word, as the other gates fall back (Windows review 2026-11-26, probe P6)
+  const { words, start } = turnWindows(events);
+  const from = start < 0 ? words : start;
+  return events.filter((e, i) => i > from && (e.kind === 'text' || e.kind === 'write'));
 }
 
 function loadInstance(cwd) {

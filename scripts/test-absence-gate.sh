@@ -165,6 +165,18 @@ run_hook "20 control: readable search, empty output, same claim" "$T/c20.jsonl" 
   say 'zsh could not read the Trash here, so I am asking the operator to look.'; } > "$T/c21.jsonl"
 run_hook "21 control: unreadable result, no absence claim" "$T/c21.jsonl" allow "$P"
 
+# A question-tool answer arrives inside the turn (turn-kind.cjs turnWindows, Windows review 2026-11-26): no Stop ran at
+# the question, so a claim before it is judged at the turn's own stop, and searches before it back a claim after it.
+ASK='{"message":{"role":"assistant","content":[{"type":"tool_use","name":"AskUserQuestion","id":"qa1","input":{}}]}}'
+ANS='{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"qa1","content":"The user answered: go on"}]}}'
+{ echo "$U"; echo "$NARROW"; say "$CLAIM"; echo "$ASK"; echo "$ANS"; say 'Done.'; } > "$T/c22.jsonl"
+run_hook "22 claim before a question-tool answer, one root searched" "$T/c22.jsonl" block "$P"
+{ echo "$U"; echo "$NARROW"
+  tool Grep '{"pattern":"send rate","path":"docs"}'
+  tool Bash "{\"command\":\"cd $NS && rg -n 'send rate' .\"}"
+  echo "$ASK"; echo "$ANS"; say "$CLAIM"; } > "$T/c23.jsonl"
+run_hook "23 searches before the answer back a claim after it" "$T/c23.jsonl" allow "$P"
+
 echo
 [ "$fail" -eq 0 ] && echo "absence-gate fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"
