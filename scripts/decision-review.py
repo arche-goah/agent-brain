@@ -80,6 +80,11 @@ HOOK_ECHO = re.compile(r"^(Stop hook feedback:|\[SYSTEM NOTIFICATION)")
 COMPACT = re.compile(r"^This session is being continued from a previous conversation")
 # Not the operator's words to the AI: messages of other sessions and agents, and the echo of a shell command the
 # operator ran with `!` (measured 2026-10-16 on the macOS brain: 86 cross-session messages among 1040 "prompts").
+# The `!` command, one definition and one deliberate difference (Windows review 2026-11-26: two rules for one input):
+# its OUTPUT (<bash-stdout>/<bash-stderr>) is machine text for every reader - helpers/turn-kind.cjs BANG_OUTPUT and
+# isNotification are the definition; this pattern drops every record that opens with them. Its typed INPUT
+# (<bash-input>) is the operator's word for the gates (an order they act on, operatorWords keeps it) but no prompt
+# TO THE AI for this count: a shell command asks the AI nothing, and counting it would dilute the correction rate.
 NOT_PROMPT = re.compile(r"^<(cross-session-message|agent-message|bash-input|bash-stdout|bash-stderr)\b")
 
 BUILTIN = {
