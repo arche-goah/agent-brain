@@ -15,7 +15,7 @@ PY=python3; "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python   # OS-17
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 g() { git -c user.name=t -c user.email=t@t "$@" >/dev/null 2>&1; }
 mkdir -p "$T/stubcore/helpers" "$T/stubcore/scripts"
-printf '%s\n' '#!/usr/bin/env bash' 'touch .claude-state/stub-ran' \
+printf '%s\n' '#!/usr/bin/env bash' 'touch .claude-state/stub-ran' 'sleep "${STUB_SLEEP:-0}"' \
   'if [ "${STUB_RC:-0}" = 0 ]; then echo "WARN stub warning"; echo "DONE — already up to date."; else echo "FAIL stub failure"; fi' \
   'exit "${STUB_RC:-0}"' > "$T/stubcore/scripts/brain-update.sh"
 printf '%s\n' 'machine_key() { echo testbox; }' > "$T/stubcore/scripts/machine-key.sh"
@@ -94,7 +94,9 @@ held "a Core update: off line (CRLF, any case) holds it" m2 "switched off on thi
 fresh l; mkdir -p "$T/l/.claude-state/brain-update-auto.lock"; held "a run still going (the lock) holds a second one" l "*still going*"
 fresh l2; mkdir -p "$T/l2/.claude-state/brain-update-auto.lock"; touch -t 200001010000 "$T/l2/.claude-state/brain-update-auto.lock"
 out=$(run l2 upd="x -> y"); check "a lock older than an hour is taken over" "$out" "core update started automatically:*"; wait_rc "$T/l2"
-fresh p; ( run p upd="x -> y" > "$T/p.1" ) & ( run p upd="x -> y" > "$T/p.2" ) & wait
+# The stub sleeps so the first run still holds the lock when the second start checks it (a real update
+# runs for minutes; an instant stub released the lock before a slow runner's second start - CI 2026-11-28).
+fresh p; ( run p upd="x -> y" STUB_SLEEP=3 > "$T/p.1" ) & ( run p upd="x -> y" STUB_SLEEP=3 > "$T/p.2" ) & wait
 n=$(cat "$T/p.1" "$T/p.2" | grep -ac "started automatically")
 [ "$n" = 1 ] && echo "ok   two starts at the same instant: one run" || { echo "FAIL two simultaneous starts gave $n runs"; fail=1; }
 wait_rc "$T/p"
