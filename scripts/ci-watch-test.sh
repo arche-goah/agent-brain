@@ -45,6 +45,10 @@ case "${CI_WATCH_STUB:?}" in
   net_dead)   echo 'Post "https://api.github.com/graphql": net/http: TLS handshake timeout' >&2; exit 1 ;;
   # point 6: every gh call is counted, each answer takes real time, so a second watch can attach.
   pr_slow)    echo x >> "${CI_WATCH_STATE:?}.calls"; "$REAL_SLEEP" 1; echo '[{"bucket":"pass"}]' ;;
+  # point 9: the same, but the PR head is the caller's STUB_HEAD - an owner that read the old head, a second
+  # call that sees the pushed one. Each caller counts its own calls.
+  pr_slow_head) echo x >> "${CI_WATCH_STATE:?}.calls-${STUB_HEAD:?}"; "$REAL_SLEEP" 1
+              if [[ "$*" == *headRefOid* ]]; then echo "$STUB_HEAD"; else echo '[{"bucket":"pass"}]'; fi ;;
   # 2026-10-10: right after a merge, `pr checks` answered with exit 0 and a reply that was not
   # the JSON list (the run was being registered); the next poll had 11 green checks. One
   # unparseable poll is a wait; only a repeat is a verdict.
@@ -588,9 +592,10 @@ first=$!
 CI_WATCH_STUB=pr_slow CI_WATCH_STATE="$TMP/state-pr_slow" bash "$WATCH" pr owner/repo 77 30 >"$TMP/second" 2>&1
 rc2=$?; wait "$first"; rc1=$?
 both=$(wc -l < "$TMP/state-pr_slow.calls" | tr -d ' ')
-if [[ "$rc1" == 0 && "$rc2" == 0 && "$both" == "$solo" ]] && grep -q "CI-WATCH SHARED" "$TMP/second" \
+# point 9: the attached call reads the PR head ONCE at the verdict, to check it is the head the verdict was for
+if [[ "$rc1" == 0 && "$rc2" == 0 && "$both" == "$(( solo + 1 ))" ]] && grep -q "CI-WATCH SHARED" "$TMP/second" \
    && grep -q "CI-WATCH GREEN" "$TMP/second"; then
-  echo "  OK   second watch on the same PR attaches: rc $rc1/$rc2, gh calls $both = one watch alone ($solo)"
+  echo "  OK   second watch on the same PR attaches: rc $rc1/$rc2, gh calls $both = one watch alone ($solo) + one head read"
 else
   echo "  FAIL second watch on the same PR: rc $rc1/$rc2, gh calls $both vs alone $solo"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
 fi
@@ -605,6 +610,34 @@ if ! grep -q "CI-WATCH SHARED" "$TMP/second" && grep -q "CI-WATCH GREEN" "$TMP/s
   echo "  OK   a watch on another PR polls on its own (control)"
 else
   echo "  FAIL a watch on another PR attached or failed"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
+fi
+# point 9 (2026-11-28): the owner's verdict was for the PREVIOUS head - an attached call armed after a push
+# does not take it over, it watches the head the PR shows now.
+OLD_HEAD=1111111111111111111111111111111111111111; NEW_HEAD=2222222222222222222222222222222222222222
+shared_heads() { # $1 = the attached call's head
+  rm -f "$TMP/state-pr_head".*
+  CI_WATCH_STUB=pr_slow_head STUB_HEAD=$OLD_HEAD CI_WATCH_STATE="$TMP/state-pr_head" bash "$WATCH" pr owner/repo 80 30 >"$TMP/first" 2>&1 &
+  first=$!
+  "$REAL_SLEEP" 0.3
+  CI_WATCH_STUB=pr_slow_head STUB_HEAD=$1 CI_WATCH_STATE="$TMP/state-pr_head" bash "$WATCH" pr owner/repo 80 30 >"$TMP/second" 2>&1
+  rc2=$?; wait "$first"; rc1=$?
+  own=$(cat "$TMP/state-pr_head.calls-$1" 2>/dev/null | wc -l | tr -d ' ')
+}
+shared_heads $NEW_HEAD
+if [[ "$rc2" == 0 ]] && grep -q "CI-WATCH SHARED" "$TMP/second" && grep -q "not taken over" "$TMP/second" \
+   && grep -q "CI-WATCH GREEN" "$TMP/second" && (( own > 1 )); then
+  echo "  OK   an owner's verdict for an older head is not taken over: the attached call watched ${NEW_HEAD:0:7} itself ($own gh calls)"
+else
+  echo "  FAIL attached call took over a verdict for another head: rc $rc2, own gh calls $own"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
+fi
+grep -q "measured for head $OLD_HEAD" "$TMP/second" && echo "  OK   ... and names the head the verdict was for" \
+  || { echo "  FAIL ... the note does not name the owner's head"; fails=$((fails+1)); }
+# control: the same race with the SAME head - the verdict is taken over, one head read of its own.
+shared_heads $OLD_HEAD
+if [[ "$rc1" == 0 && "$rc2" == 0 ]] && grep -q "CI-WATCH GREEN" "$TMP/second" && ! grep -q "not taken over" "$TMP/second"; then
+  echo "  OK   control: an owner's verdict for the current head is taken over (rc $rc1/$rc2)"
+else
+  echo "  FAIL control: same head not taken over: rc $rc1/$rc2"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
 fi
 # ...and a dead owner's leftover directory is taken over, not waited on.
 mkdir -p "$TMP/locks/stale"; echo 999999 > "$TMP/locks/stale/pid"

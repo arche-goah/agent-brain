@@ -44,6 +44,9 @@
 #      check-run of the watched commit is still in_progress: it moves on poll by poll until
 #      the run ends, up to CI_WATCH_RUN_CEILING (default 7200 s) after the oldest running
 #      check-run started. Nothing running, nothing readable, or past the ceiling = UNKNOWN.
+#   9. (2026-11-28) An attached watch (point 6) replayed the owner's GREEN for the PREVIOUS head while the
+#      pushed head's runs were queued. A pr-mode GREEN/RED is taken over only when the head it was measured
+#      for is the PR's head now; otherwise the attached call watches the current head itself.
 # This script matches refs via the run's headBranch FIELD from JSON (works for tags
 # and branches alike), enumerates every terminal state, and cannot end silently:
 # exit 0 = all green · 1 = something failed/cancelled/timed out in CI · 2 = could
@@ -107,18 +110,34 @@ if [[ -z "${CI_WATCH_SHARED_CHILD:-}" && "${CI_WATCH_SHARE:-1}" != 0 ]]; then
   mkdir -p "$LOCKROOT" 2>/dev/null
   alive() { [[ -n "$1" ]] && kill -0 "$1" 2>/dev/null; }
   replay() { cat "$L/out" 2>/dev/null; cat "$L/err" >&2 2>/dev/null; exit "$(cat "$L/rc")"; }
+  # Point 9 (2026-11-28, measured on the macOS instance): a watch armed right after a push attached to a watch
+  # another session had started on the same PR earlier and replayed its `GREEN — 14 checks` while the pushed
+  # head's runs were still queued - the owner's verdict was for the PREVIOUS head. A pr-mode GREEN or RED is
+  # taken over only when the sha it was measured for ($L/sha, written by the owner) is the PR's head now;
+  # otherwise (another head, no sha recorded, head unreadable) this call watches the current head itself.
+  pr_verdict_is_current() {   # returns 0 = replay; else it does not return (watches on its own)
+    [[ "$MODE" == pr ]] || return 0
+    local rc judged head
+    rc=$(cat "$L/rc"); [[ "$rc" == 0 || "$rc" == 1 ]] || return 0   # UNKNOWN / NO-CI claim neither green nor red
+    judged=$(cat "$L/sha" 2>/dev/null)
+    head=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null)
+    [[ -n "$judged" && "$head" == "$judged" ]] && return 0
+    echo "CI-WATCH SHARED: that watch's verdict was measured for head ${judged:-(not recorded)}, PR #$TARGET head is now ${head:-(unreadable)} — not taken over, watching the current head"
+    [[ "$head" =~ ^[0-9a-f]{7,40}$ ]] && export CI_WATCH_SHA="$head"
+    CI_WATCH_SHARED_CHILD=1 exec bash "$0" "$@"
+  }
   if ! mkdir "$L" 2>/dev/null; then
     owner=$(cat "$L/pid" 2>/dev/null)
     if alive "$owner"; then
       echo "CI-WATCH SHARED: a watch for $REPO $MODE $TARGET already runs on this machine (pid $owner) — waiting for its verdict instead of polling GitHub"
       while alive "$owner" && [[ ! -f "$L/rc" ]]; do sleep "$POLL"; done
-      [[ -f "$L/rc" ]] && replay
+      [[ -f "$L/rc" ]] && pr_verdict_is_current "$@" && replay
     fi
     rm -rf "$L"
     mkdir "$L" 2>/dev/null || exec bash "$0" "$@"   # another call took it over first: attach to that one
   fi
   echo $$ > "$L/pid"
-  { CI_WATCH_SHARED_CHILD=1 bash "$0" "$@" 2>"$L/err"; echo $? > "$L/rc.tmp"; } | tee "$L/out"
+  { CI_WATCH_SHARED_CHILD=1 CI_WATCH_VERDICT_SHA_FILE="$L/sha" bash "$0" "$@" 2>"$L/err"; echo $? > "$L/rc.tmp"; } | tee "$L/out"
   cat "$L/err" >&2
   mv "$L/rc.tmp" "$L/rc"
   exit "$(cat "$L/rc")"
@@ -139,6 +158,14 @@ moves=0
 MOVES_MAX=${CI_WATCH_MOVES_MAX:-5}
 
 fail_unknown() { echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
+# Point 9: the head a pr-mode GREEN or RED was measured for, for a watch that attaches to this one. $1 = the sha;
+# none given = the PR's head read now (a red is judged on the head the checks above were just read for).
+record_verdict_sha() {
+  [[ -n "${CI_WATCH_VERDICT_SHA_FILE:-}" ]] || return 0
+  local s="${1:-}"
+  if [[ -z "$s" ]] && ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid; then s=$gh_out; fi
+  printf '%s\n' "$s" > "$CI_WATCH_VERDICT_SHA_FILE"
+}
 
 # --- rate limit (header, point 5) ----------------------------------------------------
 # ghq <gh args…> runs gh in THIS shell (never inside $(…), so the deadline extension
@@ -625,6 +652,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     # at once, and twice "only that check is red" was read while the other jobs still ran; one of them was
     # really red). Without the variable the early report above stays the default.
     if (( pending > 0 && ${failed:-0} > 0 )) && [[ "${CI_WATCH_WAIT_ALL:-}" != 1 ]] && ! pr_head_behind_branch && ! pr_red_not_of_head; then
+      record_verdict_sha
       echo "CI-WATCH RED: $REPO PR #$TARGET — $failed failing check(s), $pending still running (a failed check does not turn green)"
       exit 1
     fi
@@ -633,6 +661,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     if (( bad > 0 )) && pr_red_not_of_head; then sleep "$POLL"; continue; fi
     if (( bad > 0 )); then
       names=$("$PY" -c 'import json,sys; print(", ".join(sorted({c.get("name","?") for c in json.load(sys.stdin) if c.get("bucket") in ("fail","cancel")})))' <<<"$json" 2>/dev/null)
+      record_verdict_sha
       echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)${names:+: $names}"
       never_started_note
       exit 1
@@ -656,6 +685,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
       green_head=$gh_out
       sleep "$POLL"; continue
     fi
+    record_verdict_sha "$green_head"
     echo "CI-WATCH GREEN: $REPO PR #$TARGET — $total checks, none failing"
     exit 0
   fi
