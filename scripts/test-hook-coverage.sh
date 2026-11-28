@@ -38,6 +38,7 @@ make_brain() { # make_brain <dir>
   mkdir -p "$1/core/templates" "$1/core/helpers" "$1/core/hooks" "$1/.claude/rules"
   cp "$CORE/templates/settings.json" "$1/core/templates/"
   cp "$CORE/hooks/hooks.json" "$1/core/hooks/"
+  cp "$CORE"/hooks/*.cjs "$1/core/hooks/" 2>/dev/null   # the preload the hook commands name (#683)
   cp "$CORE"/helpers/*.cjs "$CORE"/helpers/*.sh "$1/core/helpers/" 2>/dev/null
   printf '{"names": ["placeholder"], "instances": []}\n' > "$1/.claude/rules/leak-names.json"
   printf '{"domains": [], "inert_ok": "fixture brain, no live systems"}\n' > "$1/.claude/rules/live-read.json"
@@ -245,6 +246,16 @@ case "$out" in
   *"PreToolUse: file-guard.cjs runs twice"*) ok "a broken same-named path next to the plugin is still named as a duplicate (careful side)";;
   *) bad "broken same-named path next to the plugin not named: '$(printf '%s' "$out" | head -1)'";;
 esac
+
+# #683 Windows review probe 4: a preload the hook commands name (node -r core/hooks/operator-lead.cjs) that the consumed
+# core does not ship refuses every call of every hook that names it - named, once
+B="$T/nopre"; make_brain "$B"; rm -f "$B/core/hooks/operator-lead.cjs"
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$B" 2>&1)"; rc=$?
+n=$(awk '/the preload core\/hooks\/operator-lead.cjs is named/{c++} END{print c+0}' <<< "$out")
+if [ "$rc" -eq 1 ] && [ "$n" -ge 1 ]; then ok "a missing preload is named ($n line(s), exit 1)"
+else bad "missing preload not named: rc=$rc n=$n '$(printf '%s' "$out" | head -1)'"; fi
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$T/clean" 2>&1)"
+case "$out" in *"the preload"*) bad "a shipped preload was named as missing";; *) ok "control: a shipped preload is no finding";; esac
 
 # 5) --runs: where one helper runs (onboarding-verify check 5) — the plugin's hooks.json counts,
 #    a plugin cache without hooks/ and no settings line is "nowhere" (exit 1, no line)
