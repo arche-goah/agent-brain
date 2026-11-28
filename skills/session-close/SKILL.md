@@ -239,9 +239,19 @@ then an explicit release follows.
      changes go to suite repos next to the brain; a suite patch left uncommitted passes a
      close that only looked at the brain's tree (coherence-scan 2026-09-18). For each
      `FAIL neighbour repo` / `FAIL shared-memory` line from step 2: commit and push under
-     that repo's own rules, or name it in the close report with a reason (another
-     session's work counts as a reason — say so). A repo this session wrote to that
-     `config/ecosystem.json` does not list is checked by hand (`git status`) and named.
+     that repo's own rules, or name it in the close report with a reason. Another
+     session's work counts as a reason only while that session is alive
+     (`core/scripts/parallel-sessions.sh` lists it) — say which one; a session that has
+     closed left its work to this brain, and this close commits it by path like its own.
+     Files of several sessions mixed in one tree are no reason either: commit by path
+     (working rule #12). Whatever of this session's own work still stays uncommitted —
+     a repo whose rules forbid a push to main, a PR not ready — is at least committed to
+     a branch and pushed before the release, so it never lives on one disk only
+     (measured 2026-11-28 on one instance: a lab repo's work of three days stood only in
+     the working copy after a close that named "files of other sessions" as its reason;
+     the same repo held a second such deferral from 17 days earlier). A repo this session
+     wrote to that `config/ecosystem.json` does not list is checked by hand (`git status`)
+     and named.
      **A closing session starts no watch it cannot see through.** A push here is a commit
      reaching its remote; it does not open new duties. Where a push would expect a reaction
      — a new PR whose CI has to be read, a shared-memory request awaiting an answer — the
