@@ -109,6 +109,11 @@ run_case en-you-inline '"The rule forbids endings like do you want X? at the tur
 # Windows content review 2026-11-26: a question after a line break or after another question was missed
 run_case en-you-newline '"Tests are green\n\nWould you like the gate as a core PR?"' block "$CWD"
 run_case en-you-after-question '"Ready? Do you want the merge now?"' block "$CWD"
+# Windows re-review 2026-11-27: a question after a dash or a closing parenthesis, and "were you", were missed
+run_case en-you-after-dash '"All green - do you want the merge now?"' block "$CWD"
+run_case en-you-after-paren '"All green (both OS) Do you want the merge now?"' block "$CWD"
+run_case en-you-were '"Done. Were you expecting the old head?"' block "$CWD"
+run_case en-you-hyphen-word '"The well-known fix is in, nothing open."' allow "$CWD"
 # English built-ins still grip with a language file present (merge, not replace)
 run_case en-with-pack '"Tests are green. Do you want me to tag the release?"' block "$DE"
 # Negative direction

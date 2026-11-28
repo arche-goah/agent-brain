@@ -96,6 +96,9 @@ const BUILTIN = [
   '\\bshall I\\b', '\\bshould I\\b', '\\bdo you want\\b', '\\bwant me to\\b',
   '\\bwould you like\\b', '\\b(ok|okay) (to|if I)\\b', '\\bgo ahead\\b', '\\bnow or later\\b',
   '\\bor (rather|later|not)\\b', '\\bwhich (one|option|do you)\\b',
+  // The question shape, one source with stoppen-gate.cjs ("Could you live with the old head?"
+  // was held at the turn end but never recorded here - Windows content review 2026-11-26).
+  ...require('./question-shape.cjs').YOU_QUESTION,
 ];
 
 function root(cwd) { return process.env.CLAUDE_PROJECT_DIR || cwd || process.cwd(); }

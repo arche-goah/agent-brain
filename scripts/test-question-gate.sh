@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# covers: question-gate close-stamp
+# covers: question-gate close-stamp question-shape
 # Fixture test for helpers/question-gate.cjs — both directions, plus the CLI.
 # The must-block case is the incident (2026-10-09): a proposal ended as a question, the
 # operator's next prompt was about something else, and the question scrolled away.
@@ -160,6 +160,14 @@ R="$T/r4"; fresh "$R"
 check "question only inside code and quotes" "$T/t4.jsonl" allow "$R"
 { user "go"; asst "Why did it fail? The lock was stale."; user "next"; asst "ok"; } > "$T/t5.jsonl"
 check "a plain why-question is not a proposal" "$T/t5.jsonl" allow "$R"
+# One question shape with stoppen-gate.cjs (helpers/question-shape.cjs): the Windows content review 2026-11-26
+# measured "Could you live with the old head?" held at the turn end but never recorded here.
+R="$T/r5s"; fresh "$R"
+{ user "go"; asst "Both heads are green. Could you live with the old head?"; user "next"; asst "ok"; } > "$T/t5s.jsonl"
+check "question by shape (auxiliary + you) is recorded" "$T/t5s.jsonl" block "$R"
+R="$T/r5w"; fresh "$R"
+{ user "go"; asst "Two logs exist. Why do you see two logs? Because the rotation ran twice."; user "next"; asst "ok"; } > "$T/t5w.jsonl"
+check "debt, named: a self-answered why-do-you question is recorded too, as at the turn end" "$T/t5w.jsonl" block "$R"
 
 R="$T/r6"; fresh "$R"
 check "re-issue (stop_hook_active)" "$T/t1.jsonl" allow "$R" true
