@@ -48,6 +48,12 @@ probe "PowerShell Set-Location" 'Set-Location /pdir; git commit -m x' "/pdir|com
 probe "the incident: -C inside a quoted commit message is no option" 'git commit -m "ledger: git -C reader in train" -- docs/x.md' "/cwd|commit"
 probe "a commit -C <sha> after the verb is no directory" "git commit -C HEAD -- a" "/cwd|commit"
 probe "git as an argument of another command is no call" "echo git -C /nodir status" ""
+probe "a call after if is a call (2026-11-25: it was not read)" 'if git -C /kwdir commit -q -m x; then echo ok; fi' "/kwdir|commit"
+probe "a call after do is a call" 'for f in a; do git -C /kwdir push; done' "/kwdir|push"
+probe "a call after ! is a call" '! git -C /kwdir diff --quiet' "/kwdir|diff"
+probe "--git-dir <dir> names the repository (review of #679)" "git --git-dir /gdir/.git commit -m x" "/gdir/.git|commit"
+probe "--git-dir=<dir> names the repository" "git --git-dir=/gdir/.git commit -m x" "/gdir/.git|commit"
+probe "a git -C in a comment line is no call" "$(printf '# see git -C /nodir status\ngit status')" "/cwd|status"
 case "${OSTYPE:-}" in
   msys*|cygwin*)
     out=$(node -e 'const {gitCalls}=require(process.argv[1]);process.stdout.write((gitCalls("git -C /c/work/r status","C:/cwd")||[])[0].dir.replace(/\\/g,"/"))' "$GT")

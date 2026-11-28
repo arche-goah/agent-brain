@@ -26,6 +26,7 @@ const DIR_SH = /^(?:cd|pushd)$/;
 const DIR_PS = /^(?:cd|chdir|sl|set-location|push-location|pushd)$/i;
 // git's global options that take the next word as their value
 const WITH_VALUE = new Set(['-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);
+const SH_KEYWORD = new Set(['if', 'then', 'elif', 'else', 'while', 'until', 'do', '!', 'time', '{']);
 
 function home() { return process.env.HOME || process.env.USERPROFILE || os.homedir(); }
 
@@ -63,7 +64,9 @@ function gitCalls(cmd, cwd, ps) {
         }
         break;
       }
-      if (t === 'sudo' || /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) { i += 1; continue; }
+      // a shell keyword before the call (`if git commit …; then`, `do git push`) - measured 2026-11-25: such a call was not
+      // read at all, and a gate that wanted its folder judged the cwd instead
+      if (t === 'sudo' || SH_KEYWORD.has(t) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) { i += 1; continue; }
       break;
     }
     if (i >= w.length || !isGit(w[i])) continue;
@@ -73,6 +76,10 @@ function gitCalls(cmd, cwd, ps) {
       const t = words[j];
       if (t === '-C' && words[j + 1] !== undefined) { here = abs(here, words[j + 1]); j += 2; continue; }
       if (/^-C./.test(t)) { here = abs(here, t.slice(2)); j += 1; continue; }
+      // `--git-dir <repo>/.git` names the repository too; git reads its remotes from there (review of agent-brain #679,
+      // 2026-11-26, Windows: `git --git-dir=<public>/.git commit` was judged in the cwd)
+      if (t === '--git-dir' && words[j + 1] !== undefined) { here = abs(here, words[j + 1]); j += 2; continue; }
+      if (t.startsWith('--git-dir=')) { here = abs(here, t.slice(10)); j += 1; continue; }
       if (WITH_VALUE.has(t)) { j += 2; continue; }
       j += 1;
     }
