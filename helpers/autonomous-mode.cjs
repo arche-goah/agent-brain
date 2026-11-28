@@ -210,15 +210,32 @@ function isConfirm(q) { return Boolean(q) && String(q.header || '').trim().toLow
 /** Index of the interactive option: first when the waiting mode word asks for interactive, else last. */
 function interactiveAt(n, direction) { return direction === 'interactive' ? 0 : n - 1; }
 
+/** Do these option labels stand misordered for interactive slot `i`? The one rule both sides use: mode-confirm.cjs `pre`
+ *  holds such a question at ask time, `confirmChoice` reads one already on disk by the other slot (below). Not
+ *  language-complete: it catches the likely slip - an on-word in the interactive slot, an off-word or "interactive" in any
+ *  other. */
+const INTER = /interakti|interacti/i;
+function misordered(w, labels, i) {
+  const ls = (labels || []).map((l) => String(l || ''));
+  return w.on.test(ls[i] || '') && !INTER.test(ls[i] || '') || ls.some((l, k) => k !== i && (w.off.test(l) || INTER.test(l)));
+}
+
 /** The answer to a mode-confirm question: true = autonomous, false = interactive (CONFIRM_HEADER above).
- *  `direction` is the waiting mode word's ('interactive' | 'autonomous' | none): it says where the interactive option stands. */
+ *  `direction` is the mode word's that was waiting when the question was ASKED ('interactive' | 'autonomous' | none) -
+ *  the same one `pre` checked the order against (Windows review of #672, round two: taken at answer time, an off-word in
+ *  an earlier answer of the same call moved the slot). It says where the interactive option stands. A question whose
+ *  labels are misordered for that slot but in order for the other one was asked under the other order - before the
+ *  2026-11-26 update, since `pre` holds it now - and is read by the slot it was asked with: a run kept by "Stay
+ *  autonomous" under the old order is not re-read as interactive after the update (round two, second finding). */
 function confirmChoice(w, labels, answer, direction) {
   const a = String(answer || '').trim();
   const ls = (labels || []).map((l) => String(l || '').trim());
-  const i = interactiveAt(ls.length, direction);
+  let i = interactiveAt(ls.length, direction);
+  const alt = i === 0 ? ls.length - 1 : 0;
+  if (ls.length >= 2 && misordered(w, ls, i) && !misordered(w, ls, alt)) i = alt;
   if (ls.length >= 2) {
     if (a === ls[i]) return false;
-    if (ls.some((l, k) => k !== i && l === a)) return !(w.off.test(a) || /interakti|interacti/i.test(a));   // a label that names interactive never switches on
+    if (ls.some((l, k) => k !== i && l === a)) return !(w.off.test(a) || INTER.test(a));   // a label that names interactive never switches on
   }
   // Free text: the interactive option's label, or an off-word, anywhere in it = interactive; only an order switches on -
   // a yes-word alone does not (Windows review of #672: "yes, stay interactive" read autonomous by its yes).
@@ -397,7 +414,9 @@ function promptModes(transcriptPath, cwd) {
   const confirming = w.confirm && !wordsOnly();
   let confirm = null;
   const confirmIds = new Set();
-  const confirmQs = new Map(); // "<tool_use id>\n<question text>" -> option labels, of the mode-confirm questions asked
+  // "<tool_use id>\n<question text>" -> {labels, direction} of the mode-confirm questions asked; `direction` is the mode
+  // word waiting at ASK time, the one `pre` checked the order against (an answer in the same call cannot move it)
+  const confirmQs = new Map();
   let lastOn = null;           // when the run in force was ordered or confirmed (a close stamp after it ends it)
   // The classifier also reads every question-tool ANSWER (records with mode "answer", prompt "Question: <q> …").
   // Until 2026-11-24 the answers were decided by the word lists alone. Measured on a macOS instance in one
@@ -416,7 +435,8 @@ function promptModes(transcriptPath, cwd) {
           for (const q of (b.input && b.input.questions) || []) {
             if (!isConfirm(q)) continue;
             confirmIds.add(b.id);
-            confirmQs.set(`${b.id}\n${String(q.question || '')}`, (q.options || []).map((o) => (o && o.label) || ''));
+            confirmQs.set(`${b.id}\n${String(q.question || '')}`, {
+              labels: (q.options || []).map((o) => (o && o.label) || ''), direction: confirm ? confirm.direction : null });
           }
         }
       } catch (e) { /* not a record */ }
@@ -448,7 +468,8 @@ function promptModes(transcriptPath, cwd) {
         if (confirmQs.has(key)) {
           // The mode-confirm answer: the one place a mode word's switch takes effect.
           if (pending) { pending.window = false; pending = null; }
-          state = confirmChoice(w, confirmQs.get(key), a, confirm && confirm.direction);
+          const asked = confirmQs.get(key);
+          state = confirmChoice(w, asked.labels, a, asked.direction);
           if (state) lastOn = Date.parse(d.timestamp) || null;
           confirm = null;
           out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true, ordered: state, confirmed: true,
@@ -672,7 +693,7 @@ function switches(transcriptPath, cwd) {
 }
 
 module.exports = { autonomousMode, promptModes, words, initialState, asksMode, modeAnswer, switches, intents, intentFor, intentExact, modelSays, answers, promptText, HOOK_ECHO, askWindow, modeReason,
-  confirmPending, confirmChoice, interactiveAt, isConfirm, CONFIRM_HEADER };
+  confirmPending, confirmChoice, interactiveAt, misordered, isConfirm, CONFIRM_HEADER };
 
 if (require.main === module) {
   // The bare call prints ONE word: other scripts and the fixtures compare it. `--why` adds the last switch, `--trace`

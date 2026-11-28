@@ -126,14 +126,12 @@ function pre(input, r) {
     }
     // The answer is read by position (interactiveAt), so a misordered list is held here, at ask time (Windows review of
     // #672: "Stay interactive" written first switched ON). Not language-complete: it catches the likely slip - an
-    // on-word in the interactive slot, an off-word or "interactive" in any other.
-    const INTER = /interakti|interacti/i;
+    // on-word in the interactive slot, an off-word or "interactive" in any other. The rule lives in ONE place
+    // (autonomous-mode.cjs `misordered`): the reader uses the same one for a question asked under the old order.
     const misordered = qs.filter((q) => {
       if (!am.isConfirm(q)) return false;
       const ls = (q.options || []).map((o) => String((o && o.label) || ''));
-      const i = am.interactiveAt(ls.length, dir);
-      return on.test(ls[i]) && !INTER.test(ls[i])
-        || ls.some((l, k) => k !== i && (w.off.test(l) || INTER.test(l)));
+      return am.misordered(w, ls, am.interactiveAt(ls.length, dir));
     });
     if (misordered.length) {
       return `MODE-CONFIRM: in this mode-confirm question the interactive option must be the ${where} one, and only that one - `

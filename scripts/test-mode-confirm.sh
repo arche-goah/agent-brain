@@ -60,6 +60,21 @@ mode "'stay autonomous' keeps the run" "$f" autonomous
 # no longer reads interactive by its position - answered with the interactive label it still ends the run
 f="$T/8b.jsonl"; { cat "$T/6.jsonl"; confirm c2 mode-confirm "Continue interactively" "Stay autonomous" "Continue interactively"; } > "$f"
 mode "towards interactive, the old order answered with its interactive label still ends the run (an off-word in the label)" "$f" interactive
+# Windows review of #672, round two (2026-11-27), finding 2: an answer given under the old order is read by the order it
+# was asked with - a run kept by "Stay autonomous" is not re-read as interactive after the update
+f="$T/8c.jsonl"; { cat "$T/6.jsonl"; confirm c2 mode-confirm "Stay autonomous" "Stay autonomous" "Continue interactively"; } > "$f"
+mode "towards interactive, the old order answered 'Stay autonomous' keeps the run (read by the order it was asked with)" "$f" autonomous
+# Windows review of #672, round two, finding 1: the interactive slot is the one at ASK time. One call, run autonomous, no
+# word waiting: an earlier answer of the same call carries an off-word, the mode-confirm question was asked with
+# interactive LAST and answered with the scope option.
+two() { # two <id> <answer1> <answer2> <opt1> <opt2>: one call, an ordinary question then a mode-confirm question
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":"Which PR first?","header":"PR","options":[{"label":"a"},{"label":"b"}]},{"question":"Mode?","header":"mode-confirm","options":[{"label":%s},{"label":%s}]}]}}]}}\n' "$1" "$(js "$4")" "$(js "$5")"
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","content":%s}]}}\n' "$1" "$(js "Your questions have been answered: \"Which PR first?\"=\"$2\", \"Mode?\"=\"$3\". You can now continue")"
+}
+f="$T/8d.jsonl"; { cat "$T/2.jsonl"; asst "x"; user "go on"; two c3 "a, and back to normal mode" "Continue autonomously (the open list)" "Continue autonomously (the open list)" "Stay interactive"; } > "$f"
+mode "an off-word in an earlier answer of the same call does not move the interactive slot (asked LAST, scope answered)" "$f" autonomous
+f="$T/8e.jsonl"; { cat "$T/2.jsonl"; asst "x"; user "go on"; two c3 "a, and back to normal mode" "Stay interactive" "Continue autonomously (the open list)" "Stay interactive"; } > "$f"
+mode "control: the same call answered 'Stay interactive' ends the run" "$f" interactive
 f="$T/9.jsonl"; { user "work through the list autonomously"; rejected c1; } > "$f"
 mode "a rejected mode-confirm question switches nothing" "$f" interactive
 pend "a rejected mode-confirm question ends the wait" "$f" none
