@@ -268,6 +268,42 @@ probe "a train member whose review says not OK holds the train" "$M" block
 cp "$T/pr-7.json" "$T/pr-8.json"
 probe "control: the same train with both members OK" "$M" allow
 rm -f "$T/pr-7.json" "$T/pr-8.json"
+# Round three (2026-11-28, Windows instance): (a) the FIRST verdict-looking line won, quotes and fences included;
+# (b) `changes requested` / `not okay` / `not-OK` passed; (c) a newer not OK under one key was overridden by an older
+# OK under another. $1 = text before the final verdict, $2 = final verdict, $3 = file, $4 = key (default B).
+vtail() { printf '%s\n%s\nVerdict: %s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$GOOD" "$1" "$2" "${4:-$B}" > "$T/$3"; }
+H='Risk: high - gate <!-- instance-key: '"$A"' -->'
+vtail "> Verdict: changes needed (small) - quoted from round two" "OK at 093711e." v-quote.md
+pr "$H" "helpers/x-gate.cjs" "$(native "$T/v-quote.md")@$d1"
+probe "a quoted earlier verdict above a final OK does not hold (a)" "$M" allow
+vtail "- Verdict: not OK as is -> held (a probe input)" "OK - all probes behave" v-bullet.md
+pr "$H" "helpers/x-gate.cjs" "$(native "$T/v-bullet.md")@$d1"
+probe "a probe bullet above a final OK does not hold (a)" "$M" allow
+vtail '```
+Verdict: OK | OK with findings | not OK as is
+```' "not OK as is - the reader keeps a second copy" v-fence.md
+pr "$H" "helpers/x-gate.cjs" "$(native "$T/v-fence.md")@$d1"
+probe "a fenced form template above a final not OK holds (a)" "$M" block
+vtail "" "changes needed - one fixture missing" v-cr0.md
+printf '%s\nVerdict: OK at 093711e.\n' "$(cat "$T/v-cr0.md")" > "$T/v-last-ok.md"
+pr "$H" "helpers/x-gate.cjs" "$(native "$T/v-last-ok.md")@$d1"
+probe "control: an unquoted not OK then a final OK in one review passes (last line decides)" "$M" allow
+for v in "changes requested - two findings" "changes required - one fixture" "not okay - reader is wrong" \
+  "not-OK - reader is wrong" "$(printf '\360\237\232\253') not OK as is" "Changes Requested"; do
+  vtail "" "$v" v-neg.md
+  pr "$H" "helpers/x-gate.cjs" "$(native "$T/v-neg.md")@$d1"
+  probe "verdict '$v' holds (b)" "$M" block
+done
+printf '%s\nVerdict - not OK as is\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$GOOD" "$B" > "$T/v-dash.md"
+pr "$H" "helpers/x-gate.cjs" "$(native "$T/v-dash.md")@$d1"
+probe "verdict with a dash for the colon holds (b)" "$M" block
+C="cccccccccc"
+vtail "" "OK at 093711e." v-ok-b.md "$B"
+vtail "" "not OK as is - newer finding" v-no-c.md "$C"
+pr "$H" "helpers/x-gate.cjs" "$(native "$T/v-ok-b.md")@$d1,$(native "$T/v-no-c.md")@$d2"
+probe "a newer not OK under key C is not undercut by an older OK under key B (c)" "$M" block
+pr "$H" "helpers/x-gate.cjs" "$(native "$T/v-no-c.md")@$d1,$(native "$T/v-ok-b.md")@$d2"
+probe "control: an OK under key B after C's not OK lifts it (c)" "$M" allow
 # Gaps (2026-11-15): a review without it counts only when it was posted before GAPS_FROM
 printf '%s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$OLD" "$B" > "$T/c-nogaps.md"
 pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/c-nogaps.md")@2026-11-15T10:00:00Z"
